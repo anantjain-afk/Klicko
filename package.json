@@ -1,0 +1,15 @@
+{
+  "name": "clickpilot",
+  "private": true,
+  "packageManager": "pnpm@10.34.7",
+  "scripts": {
+    "build": "corepack pnpm --filter @clickpilot/extension build",
+    "lint": "eslint apps/extension",
+    "typecheck": "corepack pnpm --filter @clickpilot/extension typecheck"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.13.0",
+    "typescript-eslint": "8.72.0"
+  }
+}
