@@ -145,6 +145,12 @@ The unit checks run with `corepack pnpm test`. To run the Playwright checks, fir
 
 Development uses `AGENTS.md` for coding guidelines, `docs/clickpilot-production-architecture.md` for system design, `PLAN.md` for milestones, and `PROGRESS.md` for verification status.
 
+### Local API (milestone 5A)
+
+Run `corepack pnpm dev:api` to start the local Worker at `http://127.0.0.1:8787`. In another terminal, run `corepack pnpm verify:api` for six synthetic HTTP checks. Valid requests return **503 provider_unavailable**; no AI provider is configured. The extension continues to use its local Mock guidance and makes no backend requests. No key, login, deployment, or extra extension permission is needed.
+
+The new `apps/api` workspace uses Hono for routing and the `packages/shared` Zod schemas for bounded input/output validation, privacy filtering, and target membership checks. Root typecheck/lint/test/build commands now include these workspaces. The API build uses Wrangler's explicit `--dry-run` flag and does not deploy. See [local API setup and contract](docs/local-api.md) for the request fixture, curl command, validation limits, expected errors, and known privacy limitations.
+
 ## Quality goals
 
 The initial test plan will measure target-identification accuracy, guided-workflow completion, correct overlay placement, safe recovery, and privacy behavior. Aspirational targets are **90% correct target selection** and **80% successful guided workflows** on a clearly documented test set. These are **goals, not achieved results**.

@@ -1,6 +1,6 @@
 # ClickPilot implementation plan
 
-Status: Milestone 1 verified; milestone 2 implemented with its separate privacy verification still unconfirmed. Milestone 3 is manually verified by the user in Chrome. The user explicitly approved milestone 4 on 21 October 2026; it is implemented and awaiting user verification. Backend and later milestones remain proposed.
+Status: Milestone 1 verified; milestone 2's separate privacy verification remains unconfirmed. Milestone 3 is verified in Chrome. Milestone 4 is implemented with manual verification pending. The user explicitly approved milestone 5A on 21 October 2026; the local contract is implemented and was verified by the user on 22 October 2026. Real Gemini integration (5B) and later milestones remain proposed.
 Prepared: 21 October 2026.
 
 ## Sources and architecture review
@@ -232,4 +232,4 @@ Add timeout/cancellation, response validation at both trust boundaries, stale re
 
 ## Recommended next approval
 
-Milestone 3 is VERIFIED in Chrome. The user explicitly authorized milestone 4 with “great , continue with milestone 4” on 21 October 2026. Milestone 4 is implemented and AWAITING USER VERIFICATION; use the numbered steps in `PROGRESS.md`. The user subsequently authorized committing and pushing the relevant milestone 4 changes to `milestone-4`. Backend work requires fresh milestone 5A approval. No merge, deployment, or publication is authorized.
+The user explicitly authorized milestone 5A with “ok , now continue with milestone 5A” on 21 October 2026. The user confirmed verification on 22 October 2026; milestone 5A is VERIFIED. The user authorized committing and pushing its relevant changes to `milestone-5A`. The extension remains in local Mock mode. Real Gemini integration requires separate milestone 5B approval. No merge, deployment, publication, or milestone 5B work is authorized.

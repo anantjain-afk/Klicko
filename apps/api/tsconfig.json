@@ -1,0 +1,5 @@
+{
+  "extends": "../../packages/shared/tsconfig.json",
+  "compilerOptions": { "resolveJsonModule": true },
+  "include": ["src/**/*.ts", "tests/**/*.ts", "vitest.config.ts"]
+}

@@ -3,11 +3,13 @@
   "private": true,
   "packageManager": "pnpm@10.34.7",
   "scripts": {
-    "build": "corepack pnpm --filter @clickpilot/extension build",
-    "lint": "eslint apps/extension",
-    "test": "corepack pnpm --filter @clickpilot/extension test",
+    "build": "corepack pnpm --filter @clickpilot/extension build && corepack pnpm --filter @clickpilot/api build",
+    "dev:api": "corepack pnpm --filter @clickpilot/api dev",
+    "lint": "eslint apps/extension apps/api packages/shared",
+    "test": "corepack pnpm -r --if-present test",
     "test:e2e": "corepack pnpm build && playwright test",
-    "typecheck": "corepack pnpm --filter @clickpilot/extension typecheck"
+    "typecheck": "corepack pnpm -r --if-present typecheck",
+    "verify:api": "corepack pnpm --filter @clickpilot/api verify:local"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

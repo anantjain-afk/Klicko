@@ -1,6 +1,6 @@
 # ClickPilot progress
 
-Updated: 21 October 2026.
+Updated: 22 October 2026.
 
 ## Current status
 
@@ -11,11 +11,14 @@ Milestone 1: VERIFIED by user.
 Milestone 2: AWAITING USER VERIFICATION.
 Milestone 3: VERIFIED by the user in Chrome on 21 October 2026.
 Milestone 4: AWAITING USER VERIFICATION — explicitly approved by the user on 21 October 2026.
-Next proposed milestone: 5A — Local backend contract and validation; not approved.
+Milestone 5A: VERIFIED by the user on 22 October 2026.
+Next proposed milestone: 5B — Real Gemini single-step guidance; not approved.
 
 The user confirmed milestone 1 in Chrome and explicitly authorized milestone 2 on 21 October 2026. The user then reported that inspection failed on the localhost fixture in both Brave and Chrome. A focused milestone 2 fix is implemented and automated checks pass. The user subsequently said “ok let's continue with milestone 3,” explicitly authorizing that scope. Work proceeded on milestone 3; no manual milestone 2 pass is inferred from that authorization. Verify inspection and overlays together in Chrome (and Brave if used).
 
 After verifying milestone 3 in Chrome, the user said “great , continue with milestone 4.” That authorizes the local mock guidance scope only. Milestone 4 is implemented and awaiting manual verification. Milestone 2's separate privacy checks and Brave results remain unconfirmed.
+
+The user subsequently said “ok , now continue with milestone 5A,” explicitly authorizing the local API contract. Work proceeded only on that approved scope. This does not create a recorded manual pass for milestone 4 or authorize Gemini calls, deployment, or extension host permissions.
 
 ## Completed planning work
 
@@ -34,7 +37,7 @@ After verifying milestone 3 in Chrome, the user said “great , continue with mi
 | 2 | Safe compact DOM observation | AWAITING USER VERIFICATION | Pending user Chrome check |
 | 3 | Highlight, arrow, tooltip | VERIFIED | User confirmed correct targets, aligned geometry, click-through, invalidation, and cleanup in Chrome |
 | 4 | Mocked single-step guidance | AWAITING USER VERIFICATION | 21 unit tests and 34 browser tests passed; manual Chrome check pending |
-| 5A | Local backend contract and validation | NOT APPROVED | Not run |
+| 5A | Local backend contract and validation | VERIFIED | User confirmed verification on 22 October 2026; prior automated evidence remains recorded |
 | 5B | Real Gemini single-step guidance | NOT APPROVED | Not run |
 | 6A | Multi-step outcome verification | NOT APPROVED | Not run |
 | 6B | Navigation and lifecycle recovery | NOT APPROVED | Not run |
@@ -42,6 +45,37 @@ After verifying milestone 3 in Chrome, the user said “great , continue with mi
 | 8 | Security review and release preparation | NOT APPROVED | Not run |
 
 ## Evidence and limitations
+
+### Milestone 5A implementation
+
+- Added `apps/api` with a local Hono Worker exposing `POST /v1/guidance/next`. Its runnable entrypoint has no provider configured and returns an explicit HTTP 503 `provider_unavailable` for valid requests. Deterministic provider functions exist only in tests through `createApp` injection; no mock success is presented as AI.
+- Added `packages/shared/src/guidance.ts` with strict Zod request/response/error schemas, payload limits, allowlisted roles/operations/outcomes/result variants, session/request/page/snapshot identity checks, and membership validation against the filtered inventory. Internal browser messages remain unchanged; no extension source file was modified.
+- Added `packages/shared/src/privacy.ts` to build a separate minimal provider context: origin only, task, eligible control IDs/roles/names/context. It omits URL paths/query/fragment, geometry, viewport, local identity, disabled/unnamed controls, and sensitive-looking labels/context; rejects credential URLs, selected sensitive paths/goals, and known sensitive output text. This is a heuristic, not a guarantee against arbitrary private prose.
+- Added actual-byte streaming limits (64 KiB, independent of Content-Length), UTF-8/JSON validation, forbidden-field rejection at each schema object, uncompressed JSON-only input, static safe errors, no application body logging, no-store/nosniff responses, loopback-only request hosts, and no CORS permission. There are no auth/storage bindings or remote fetch calls.
+- Explained and installed Hono `4.13.13` (routing), Zod `4.6.7` (runtime validation/contracts), Wrangler `4.151.3` (local Worker/build tooling). Reused pinned TypeScript and Vitest. Added the shared workspace and root scripts covering API/shared checks, local development, and HTTP verification. Ignored local Wrangler output and future secret-file names.
+- Added 38 API/shared-contract tests and a six-case HTTP verification script with a synthetic valid request fixture. Added `docs/local-api.md` with exact local commands, limits, error behavior, official sources, privacy limitations, and verification steps. Updated README, plan, and progress.
+- No extension permission or behavior changes, Gemini integration, credentials, deployment, public hosting, provider quotas, database, authentication, screenshots, milestone 5A commit, or push. Earlier milestone Git authorizations do not apply to this new scope.
+
+### Milestone 5A checks
+
+- `corepack pnpm view hono version`, `corepack pnpm view zod version`, `corepack pnpm view wrangler version` — exit 0 with network access, used to pin the installed versions. Initial sandboxed metadata lookup failed with `ENOTFOUND`; it did not establish any package version.
+- `corepack pnpm install` — exit 0; installed dependencies and updated the lockfile. pnpm reported ignored build scripts for esbuild/workerd; no build-script approval was added, and the resulting local builds and workerd verification succeeded.
+- `corepack pnpm typecheck` — exit 0 across shared, extension, and API workspaces. Initial API test typing failed on a union of header object shapes; explicit `Headers` objects fixed it. Log: `/tmp/clickpilot-5a-typecheck.log`.
+- `corepack pnpm lint` — exit 0. Initial lint flagged intentional control-character matching; a local rule exception with an explanatory comment preserves the privacy normalization without disabling the rule globally.
+- `corepack pnpm test` — exit 0; 59 tests passed: 21 extension tests in three files and 38 API tests in one file. API coverage includes malformed/oversized bodies, absent/false Content-Length and chunked cancellation, UTF-8 errors, label/count/role/geometry/identity bounds, forbidden nested fields, unknown/filtered/disabled targets, result variants/outcomes, hostile page/model strings, sensitive context, provider exceptions, no network calls/body logging, and stale response identity.
+- `corepack pnpm build` — exit 0 with local tooling access. Built the unchanged extension plus `wrangler deploy --dry-run --outdir dist` for the API. Wrangler reported no bindings and `--dry-run: exiting now`; no upload/deployment occurred. Initial sandboxed invocation built the extension but failed Wrangler's required filesystem access under `~/Library/Preferences/.wrangler`. Log: `/tmp/clickpilot-5a-build.log`.
+- `corepack pnpm dev:api` — successfully started workerd locally on `127.0.0.1:8787` with no remote bindings. Initial sandboxed attempt failed on local tooling writes and loopback inspector binding. The successful server used local tooling access outside the sandbox. Log: `/tmp/clickpilot-5a-dev.log`; inspection after verification found no request bodies, fake secrets, or provider data.
+- `corepack pnpm verify:api` — exit 0 against the actual local Worker: valid fixture → 503 provider_unavailable; malformed JSON → 400 invalid_json; oversized body → 413 payload_too_large; forbidden field → 400 invalid_request; excessive label → 400 invalid_request; sensitive goal → 422 unsafe_context. This verifies the real provider-free entrypoint, separately from injected test providers.
+- `corepack pnpm exec playwright test` — exit 0; all 34 Chromium regression tests passed in 47.5 seconds, including unchanged Mock guidance and its no-backend-traffic check.
+- `corepack pnpm exec wrangler telemetry status` from `apps/api` — exit 0; **Disabled (set by wrangler config)**. Checked after Wrangler displayed a generic first-run telemetry banner. No global telemetry preference was changed; project config also disables observability, workers.dev, and preview URLs.
+- `git diff --check` — exit 0. Extension source diff is empty; built manifest remains MV3 with exactly `activeTab`, `scripting`, `sidePanel`, no host permissions and no static content scripts.
+- Manual user verification: CONFIRMED by the user on 22 October 2026: “5A verification is done”. This records the user’s reported result; the agent did not perform their manual check.
+
+### Milestone 5A known limitations
+
+- No real guidance provider, provider timeouts/cancellation, quota controls, hosting, or client API calls exist yet. These belong to separately approved milestone 5B or later hosting work. A 503 for valid input is the intended successful contract check.
+- Privacy pattern matching cannot establish that arbitrary text is non-sensitive. Client-side minimization before backend upload remains mandatory when extension integration is introduced. Current tests use synthetic data only.
+- Hono tests run in Node; six HTTP cases also ran in actual local workerd. Browser regression tests use panel HTML in a tab, so normal Chrome/Brave side-panel verification remains manual. No hosted runtime or broad live-site behavior is claimed.
 
 ### Milestone 4 implementation
 
@@ -177,7 +211,7 @@ After verifying milestone 3 in Chrome, the user said “great , continue with mi
 
 ## Remaining decisions and limitations
 
-- Verify milestone 4 in Chrome using the steps below. Milestone 3 is verified; milestone 2's separate privacy results remain unconfirmed. If verification fails, fix the current approved scope and rerun relevant checks. Do not begin backend milestone 5A without user verification and explicit approval.
+- Verify milestone 5A using the steps below; earlier milestone 4 manual confirmation and milestone 2's separate privacy results remain unrecorded. If verification fails, fix the current approved scope and rerun relevant checks. Do not begin real Gemini milestone 5B without user verification and explicit approval.
 - Architecture filename differs from the requested path. Future work should read the existing source named above unless the user chooses to rename it.
 - Browser permission and lifecycle behavior must be verified against real Chrome; passing pure-function tests alone is insufficient.
 - Live Gemini testing later requires backend-only credentials and an account with the selected model available. Public hosting requires separately approved deployment and demonstrated abuse/budget controls.
@@ -231,3 +265,21 @@ Report any failed step and exact visible message. Stop at milestone 4 until the 
 ## Milestone 4 Git authorization
 
 The user subsequently requested: “good , now push the relevant code to milestone 4 branch”. This authorizes committing the milestone 4 source, tests, fixtures, and documentation and pushing `milestone-4` to the configured `origin` (`https://github.com/anantjain-afk/ClickPilot.git`). Manual Chrome verification remains AWAITING USER VERIFICATION; no specific manual result is inferred from “good”. The implementation has not changed since the recorded successful checks; this handoff only adds Git authorization documentation. No merge, deployment, or next milestone is authorized.
+
+Milestone 4 was committed locally as `2aae29c`. Its push was rejected by automatic approval review because the remote destination was not explicitly authorized and ownership remained unverified. The agent reported the block and did not bypass it. The later milestone 5A implementation request does not authorize retrying that push.
+
+## User verification for milestone 5A
+
+Status: VERIFIED by the user on 22 October 2026. These steps are retained for regression checks. Full setup/contract reference: `docs/local-api.md`.
+
+1. Run `corepack pnpm dev:api` from the project root. Expect the local Worker to remain running at `127.0.0.1:8787` without a login/key/deployment step. In another terminal run `corepack pnpm verify:api`; expect six PASS lines with the statuses above. Connection failures, wrong status codes, or a 200/model selection for the valid request fail verification. Check the Worker terminal for errors.
+2. Run the documented curl command in `docs/local-api.md` using `apps/api/tests/fixtures/valid-request.json`. Expect HTTP 503, JSON `kind: error`, code `provider_unavailable`, and no purported model result. Inspect headers for `Cache-Control: no-store`. The API must not request a key or call Gemini.
+3. Use the verification script's malformed, oversized, forbidden-field, excessive-label, and sensitive-goal cases. Expect static bounded errors with no echo of fake marker values, raw schema details, stack traces, or provider exceptions. Inspect the local Worker terminal; bodies and fake secrets must be absent from logs.
+4. Run `corepack pnpm build`, reload ClickPilot at `chrome://extensions`, serve fixtures with `python3 -m http.server 4173 --directory tests/fixtures`, and open `http://127.0.0.1:4173/guidance.html`. Activate the toolbar and submit **find primary target** in **Mock guidance**. Expect the same highlight/waiting behavior and no automatic click; click yourself for acknowledgement. Inspect Network: there must be no request to port 8787 or a model service from the extension. New host permissions or backend calls fail this milestone.
+5. Check page, panel, and service-worker consoles for unexpected errors. Stop the API server with Ctrl+C, then repeat the mock task in Chrome; it must still work independently. Record the actual results and any failed step. Brave remains optional and separately recorded.
+
+The user subsequently confirmed milestone 5A verification and authorized its branch handoff below. Stop here until explicit milestone 5B approval. No credentials, real model calls, merge, deployment, or publication are authorized.
+
+## Milestone 5A verification and Git authorization
+
+On 22 October 2026 the user stated: “ok , great 5A verification is done , push it in milestone-5A”. Milestone 5A is VERIFIED. This authorizes committing its relevant API/shared source, tests, fixtures, tooling, lockfile, and documentation and pushing `milestone-5A` to the configured origin (`https://github.com/anantjain-afk/ClickPilot.git`). No implementation changed after the recorded passing checks; this handoff only updates verification/authorization documentation. Milestone 5B remains NOT APPROVED.

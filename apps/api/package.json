@@ -1,0 +1,22 @@
+{
+  "name": "@clickpilot/api",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "dev": "wrangler dev --local --ip 127.0.0.1 --port 8787 --log-level warn",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "verify:local": "node scripts/verify-local.mjs"
+  },
+  "dependencies": {
+    "@clickpilot/shared": "workspace:*",
+    "hono": "4.13.13"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vitest": "5.0.5",
+    "wrangler": "4.151.3"
+  }
+}

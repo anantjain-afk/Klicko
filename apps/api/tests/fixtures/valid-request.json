@@ -1,0 +1,23 @@
+{
+  "protocolVersion": 1,
+  "operation": "next",
+  "sessionId": "7bbf7fc2-9b30-4cf8-9563-66fdacb01d20",
+  "requestId": 1,
+  "userGoal": "Find Settings",
+  "page": {
+    "url": "http://127.0.0.1:4173/guidance.html",
+    "pageKey": "fixture-page",
+    "snapshotId": "fixture-snapshot",
+    "viewport": { "width": 1100, "height": 800 }
+  },
+  "elements": [
+    {
+      "id": "el_1",
+      "role": "button",
+      "name": "Settings",
+      "context": "Main navigation",
+      "disabled": false,
+      "rect": { "x": 135, "y": 32, "width": 100, "height": 48 }
+    }
+  ]
+}
