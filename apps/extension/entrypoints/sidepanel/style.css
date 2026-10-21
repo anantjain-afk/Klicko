@@ -76,25 +76,7 @@ body {
 }
 
 .welcome {
-  padding-top: clamp(76px, 18vh, 150px);
-}
-
-.guide-line {
-  display: flex;
-  width: 82px;
-  height: 2px;
-  align-items: center;
-  justify-content: flex-end;
-  margin-bottom: 28px;
-  background: #315c43;
-}
-
-.guide-point {
-  width: 10px;
-  height: 10px;
-  border: 2px solid #315c43;
-  border-radius: 50%;
-  background: #f7f6f2;
+  padding-top: 52px;
 }
 
 h1,
@@ -119,27 +101,117 @@ h1 {
   line-height: 1.6;
 }
 
-.availability {
-  margin-top: auto;
-  padding-top: 64px;
+.primary-button {
+  width: 100%;
+  margin-top: 28px;
+  padding: 12px 16px;
+  border: 0;
+  border-radius: 9px;
+  color: #fff;
+  background: #315c43;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 650;
+  cursor: pointer;
 }
 
-.availability h2 {
+.primary-button:hover:not(:disabled) {
+  background: #244934;
+}
+
+.primary-button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.primary-button:focus-visible,
+.text-button:focus-visible {
+  outline: 3px solid #8dad98;
+  outline-offset: 3px;
+}
+
+.feedback {
+  margin-top: 28px;
+  padding: 12px;
+  border-radius: 8px;
+  color: #653522;
+  background: #f4e5d9;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.results {
+  margin-top: 36px;
+}
+
+.results-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.results h2 {
   font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.01em;
 }
 
-.availability p {
-  max-width: 36ch;
-  margin-top: 9px;
+.text-button {
+  padding: 4px;
+  border: 0;
+  color: #315c43;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.empty-results {
+  margin-top: 18px;
   color: #526056;
   font-size: 13px;
   line-height: 1.55;
 }
 
+.element-list {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.element-list li {
+  display: grid;
+  grid-template-columns: 46px 1fr;
+  column-gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid #e1e4dc;
+}
+
+.element-id {
+  grid-row: span 2;
+  color: #627166;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.element-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.element-detail {
+  margin-top: 3px;
+  color: #526056;
+  font-size: 11px;
+}
+
 footer {
-  margin-top: 26px;
+  margin-top: auto;
   padding-top: 16px;
   border-top: 1px solid #d9ded6;
   color: #526056;

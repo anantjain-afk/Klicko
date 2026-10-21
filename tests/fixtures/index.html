@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ClickPilot test page</title>
+  </head>
+  <body>
+    <nav aria-label="Main navigation">
+      <a href="#profile">Profile</a>
+      <a href="/second.html">Next page</a>
+      <button>Settings</button>
+    </nav>
+    <main>
+      <button aria-label="Open help">?</button>
+      <button disabled>Unavailable</button>
+      <button hidden>Hidden control</button>
+      <label for="search">Search projects</label>
+      <input id="search" value="PRIVATE-SEARCH-VALUE" />
+      <label for="password">Password</label>
+      <input id="password" type="password" value="PRIVATE-PASSWORD" />
+      <div contenteditable="true">PRIVATE-EDITABLE-CONTENT</div>
+    </main>
+    <dialog open>
+      <button>Settings</button>
+    </dialog>
+  </body>
+</html>

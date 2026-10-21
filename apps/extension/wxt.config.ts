@@ -6,7 +6,7 @@ export default defineConfig({
   manifest: {
     name: 'ClickPilot',
     description: 'Visual guidance for websites, one user action at a time.',
-    permissions: ['activeTab'],
+    permissions: ['activeTab', 'scripting'],
     action: {
       default_title: 'Open ClickPilot',
     },

@@ -115,18 +115,23 @@ Each milestone requires automated checks **and manual verification in Chrome** b
 
 ## Local development
 
-The milestone 1 foundation is ready for Chrome verification. Use Node.js 22 or newer and Corepack, then run these commands from the project root:
+Milestone 2 adds local page inspection. Use Node.js 22 or newer and Corepack, then run these commands from the project root:
 
 ```sh
 corepack pnpm install
 corepack pnpm typecheck
 corepack pnpm lint
+corepack pnpm test
 corepack pnpm build
 ```
 
-To load the built extension, open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select `apps/extension/.output/chrome-mv3`. Open an ordinary website and click the ClickPilot toolbar icon. The side panel should show the foundation screen. If it does not open, inspect **Errors** on the extension card and the service worker console from **Inspect views**. Reload the unpacked extension after each rebuild.
+To load the built extension, open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select `apps/extension/.output/chrome-mv3`. Reload the unpacked extension after each rebuild. If the panel fails, inspect **Errors** on the extension card and the service worker console from **Inspect views**.
 
-This build opens the side panel only. It does not observe pages or provide guidance yet. The generated manifest requests `activeTab` for future toolbar-activated page access and `sidePanel` for Chrome's side-panel API; it has no host permissions. WXT adds `sidePanel` when it detects the side-panel entrypoint.
+For a safe test page, run `python3 -m http.server 4173 --directory tests/fixtures` in a separate terminal and open `http://127.0.0.1:4173`. Click the ClickPilot toolbar icon **on that tab**, then **Inspect this page** in the panel. The list should show visible controls such as Profile, Next page, two Settings buttons in different contexts, Open help, Unavailable, and Search projects. It should omit the hidden button, password field, typed values, and editable content. Clicking **Clear** removes the list. Click the fixture's **Next page** link to verify that the old list clears and the new page produces a different list. A cross-origin navigation may end the temporary access; click the toolbar icon on the new tab before inspecting again.
+
+This build only lists controls locally. It does not highlight, click, type, or send page details to an AI service. Its manifest requests `activeTab`, `scripting`, and `sidePanel`; it has no host permissions or always-on content scripts. `scripting` lets the background worker inject the observer only after toolbar activation. The page registry expires after one minute and is cleared when requested by the panel.
+
+The unit checks run with `corepack pnpm test`. To run the Playwright checks, first run `corepack pnpm exec playwright install chromium --no-shell`, then `corepack pnpm test:e2e`. These checks cover restricted-page handling and toolbar-activated fixture inspection in Chromium. The headless test opens the panel HTML in a tab; use the manual steps above to verify the actual side panel in Chrome and Brave.
 
 Development uses `AGENTS.md` for coding guidelines, `docs/clickpilot-production-architecture.md` for system design, `PLAN.md` for milestones, and `PROGRESS.md` for verification status.
 

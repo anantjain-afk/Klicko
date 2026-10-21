@@ -9,10 +9,6 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   {
     files: ['apps/extension/**/*.{ts,tsx}'],
-    languageOptions: {
-      globals: {
-        document: 'readonly',
-      },
-    },
+    rules: { 'no-undef': 'off' },
   },
 );
