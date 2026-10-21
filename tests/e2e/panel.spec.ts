@@ -9,6 +9,7 @@ test('built extension reports restricted pages without injecting into them', asy
 
     const panel = await context.newPage();
     await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+    await panel.getByRole('button', { name: 'Manual highlights', exact: true }).click();
     await panel.getByRole('button', { name: 'Inspect this page' }).click();
     await expect(panel.getByRole('alert')).toContainText('cannot be inspected');
 
@@ -28,6 +29,7 @@ test('toolbar activation lets the panel inspect the local fixture', async () => 
     // Headless Chromium does not expose side panels as Playwright pages.
     const panel = await context.newPage();
     await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+    await panel.getByRole('button', { name: 'Manual highlights', exact: true }).click();
     await page.bringToFront();
     await panel.getByRole('button', { name: 'Inspect this page' }).click();
 

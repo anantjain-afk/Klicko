@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ClickPilot mock guidance fixture</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; padding: 32px; color: #202721; background: #f7f6f2; font: 16px/1.5 system-ui, sans-serif; }
+      button, a { font: inherit; }
+      button { padding: 10px 16px; cursor: pointer; }
+      nav { display: flex; align-items: center; gap: 20px; }
+      main { max-width: 650px; margin-top: 48px; }
+      #primary { margin: 24px 0; }
+      #output { display: block; margin-top: 20px; }
+      dialog[open] { position: absolute; top: 140px; right: 32px; left: auto; margin: 0; padding: 24px; }
+      .fixture-tools { display: flex; gap: 12px; margin-top: 80px; flex-wrap: wrap; }
+    </style>
+  </head>
+  <body>
+    <nav aria-label="Main navigation">
+      <button id="profile">Profile</button>
+      <button id="nav-settings">Settings</button>
+      <a href="/second.html">Next page</a>
+    </nav>
+    <main>
+      <h1>Mock guidance fixture</h1>
+      <p>Ask ClickPilot to “find primary target”, “find profile”, “open help”, or “find navigation settings”. “Find settings” is deliberately ambiguous.</p>
+      <button id="primary"><span>Primary target</span></button>
+      <button id="help" aria-label="Open help">Help</button>
+      <output id="counter">Clicks: 0</output>
+      <output id="output">No action taken</output>
+      <div class="fixture-tools">
+        <button id="remove-primary">Remove primary target</button>
+        <button id="cover-primary">Cover primary target</button>
+        <button id="change-route">Change route (SPA)</button>
+      </div>
+      <p>Reload between destructive checks. Guidance never uses these controls on your behalf.</p>
+    </main>
+    <dialog open aria-label="Preferences"><button id="dialog-settings">Settings</button></dialog>
+    <script>
+      let clicks = 0;
+      const primary = document.getElementById('primary');
+      primary.addEventListener('click', () => { document.getElementById('counter').textContent = `Clicks: ${++clicks}`; });
+      for (const id of ['profile', 'nav-settings', 'dialog-settings', 'help']) {
+        document.getElementById(id).onclick = () => { document.getElementById('output').textContent = `${id} clicked`; };
+      }
+      document.getElementById('remove-primary').onclick = () => primary.remove();
+      document.getElementById('cover-primary').onclick = () => {
+        const rect = primary.getBoundingClientRect();
+        const cover = document.createElement('div');
+        Object.assign(cover.style, { position: 'fixed', left: `${rect.x}px`, top: `${rect.y}px`, width: `${rect.width}px`, height: `${rect.height}px`, background: '#c6ae94', zIndex: '10' });
+        cover.textContent = 'Covered';
+        document.body.append(cover);
+      };
+      document.getElementById('change-route').onclick = () => history.pushState({}, '', '#changed');
+    </script>
+  </body>
+</html>

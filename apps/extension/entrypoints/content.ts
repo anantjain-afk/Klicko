@@ -2,6 +2,7 @@ import { browser, type Browser } from 'wxt/browser';
 import { defineContentScript } from 'wxt/utils/define-content-script';
 import { collectElements } from '../src/features/observer/collect-elements';
 import { showOverlay } from '../src/features/overlay/renderer';
+import { isMockFixtureUrl } from '../src/features/session/mock';
 import { isContentRequest, type OverlayResponse, type PageSnapshot, type PageInvalidation } from '../src/lib/messages';
 
 interface ObserverState {
@@ -23,6 +24,14 @@ export default defineContentScript({
     let expiry: ReturnType<typeof setTimeout> | undefined;
     let navigationCheck: ReturnType<typeof setInterval> | undefined;
     let removeOverlay: (() => void) | null = null;
+    let removeClickListener: (() => void) | null = null;
+
+    function clearOverlay() {
+      removeOverlay?.();
+      removeOverlay = null;
+      removeClickListener?.();
+      removeClickListener = null;
+    }
 
     function notify(type: PageInvalidation['type'], targetId?: string) {
       if (!snapshotId || !ctx.isValid) return;
@@ -30,8 +39,7 @@ export default defineContentScript({
     }
 
     function clear() {
-      removeOverlay?.();
-      removeOverlay = null;
+      clearOverlay();
       registry.clear();
       snapshotId = null;
       if (expiry) clearTimeout(expiry);
@@ -51,26 +59,39 @@ export default defineContentScript({
     function handleMessage(message: unknown, sender: { id?: string }, sendResponse: (response: PageSnapshot | OverlayResponse | { ok: true }) => void) {
       if (!ctx.isValid || sender.id !== browser.runtime.id || !isContentRequest(message)) return;
       if (message.type === 'CLEAR_ELEMENTS') {
-        clear();
+        if (message.snapshotId === undefined || message.snapshotId === snapshotId) clear();
         sendResponse({ ok: true });
         return;
       }
 
       checkNavigation();
       if (message.type === 'SHOW_OVERLAY') {
-        removeOverlay?.();
-        removeOverlay = null;
         const target = registry.get(message.targetId);
         const isCurrent = () => ctx.isValid && observedUrl === location.href
           && pageKey === message.pageKey && snapshotId === message.snapshotId
           && registry.get(message.targetId) === target;
         if (target && isCurrent()) {
+          clearOverlay();
           removeOverlay = showOverlay(target, message.instruction, isCurrent, () => {
-            removeOverlay = null;
+            clearOverlay();
             notify('OVERLAY_INVALIDATED', message.targetId);
           });
+          const guidance = message.guidance;
+          if (removeOverlay && guidance) {
+            const onClick = (event: MouseEvent) => {
+              if (!event.isTrusted || !(event.target instanceof Node) || !target.contains(event.target)
+                || !isCurrent() || !removeOverlay) return;
+              void browser.runtime.sendMessage({
+                type: 'GUIDANCE_CLICKED', pageKey, snapshotId, targetId: message.targetId,
+                sessionId: guidance.sessionId, requestId: guidance.requestId,
+              }).catch(() => undefined);
+              clearOverlay();
+            };
+            document.addEventListener('click', onClick, true);
+            removeClickListener = () => document.removeEventListener('click', onClick, true);
+          }
         }
-        sendResponse({ type: 'OVERLAY_RESULT', ok: removeOverlay !== null });
+        sendResponse({ type: 'OVERLAY_RESULT', ok: !!target && isCurrent() && removeOverlay !== null });
         return;
       }
       clear();
@@ -83,6 +104,7 @@ export default defineContentScript({
         pageKey,
         snapshotId,
         elements: collected.elements,
+        mockFixture: isMockFixtureUrl(location.href),
       };
       sendResponse(snapshot);
     }

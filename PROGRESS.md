@@ -10,9 +10,12 @@ Milestone 1: VERIFIED by user.
 
 Milestone 2: AWAITING USER VERIFICATION.
 Milestone 3: VERIFIED by the user in Chrome on 21 October 2026.
-Next proposed milestone: 4 — Mocked single-step guidance; not approved.
+Milestone 4: AWAITING USER VERIFICATION — explicitly approved by the user on 21 October 2026.
+Next proposed milestone: 5A — Local backend contract and validation; not approved.
 
 The user confirmed milestone 1 in Chrome and explicitly authorized milestone 2 on 21 October 2026. The user then reported that inspection failed on the localhost fixture in both Brave and Chrome. A focused milestone 2 fix is implemented and automated checks pass. The user subsequently said “ok let's continue with milestone 3,” explicitly authorizing that scope. Work proceeded on milestone 3; no manual milestone 2 pass is inferred from that authorization. Verify inspection and overlays together in Chrome (and Brave if used).
+
+After verifying milestone 3 in Chrome, the user said “great , continue with milestone 4.” That authorizes the local mock guidance scope only. Milestone 4 is implemented and awaiting manual verification. Milestone 2's separate privacy checks and Brave results remain unconfirmed.
 
 ## Completed planning work
 
@@ -30,7 +33,7 @@ The user confirmed milestone 1 in Chrome and explicitly authorized milestone 2 o
 | 1 | Extension foundation and side panel | VERIFIED | User confirmed in Chrome |
 | 2 | Safe compact DOM observation | AWAITING USER VERIFICATION | Pending user Chrome check |
 | 3 | Highlight, arrow, tooltip | VERIFIED | User confirmed correct targets, aligned geometry, click-through, invalidation, and cleanup in Chrome |
-| 4 | Mocked single-step guidance | NOT APPROVED | Not run |
+| 4 | Mocked single-step guidance | AWAITING USER VERIFICATION | 21 unit tests and 34 browser tests passed; manual Chrome check pending |
 | 5A | Local backend contract and validation | NOT APPROVED | Not run |
 | 5B | Real Gemini single-step guidance | NOT APPROVED | Not run |
 | 6A | Multi-step outcome verification | NOT APPROVED | Not run |
@@ -39,6 +42,38 @@ The user confirmed milestone 1 in Chrome and explicitly authorized milestone 2 o
 | 8 | Security review and release preparation | NOT APPROVED | Not run |
 
 ## Evidence and limitations
+
+### Milestone 4 implementation
+
+- Added a default **Mock guidance** view with a bounded task form, explicit status, **Stop**, **Retry**, **Replace guidance**, and documented local scenarios. The existing milestone 3 inspection/highlight UI is preserved under **Manual highlights**. Switching modes unmounts and cancels the previous controller.
+- Added `src/features/session/mock.ts`: a fixed local selector supports the documented fixture tasks and exact control names/contexts. It refuses other pages, asks for clarification when multiple controls match, and reports missing or unsupported requests honestly. Mock eligibility is derived from the content script's real URL: HTTP on `127.0.0.1:4173` or `localhost:4173`, path `/guidance.html`; no webpage attribute can enable it elsewhere.
+- Added `src/features/session/session.ts`: the panel owns one active run with a random session ID, increasing request numbers, explicit observing/selecting/highlighting/waiting/paused/error/stopped/clicked states, and an AbortController for delayed selection. Stale async replies and click messages cannot advance a superseded run. Cleanup is scoped to a snapshot so a late old reply cannot clear newer guidance. Invalid target membership or failed live highlight gets at most one fresh observation; persistent failure pauses.
+- Extended runtime message validation for scoped cleanup, optional guidance identity, fixture eligibility, and click acknowledgement. The content script observes trusted browser clicks on the current highlighted target or its descendants, reads no input values, and never prevents the click's normal behavior. Synthetic `.click()` events and unrelated controls do not acknowledge guidance. A click clears decoration and yields “Click observed” with an explicit statement that task completion has not been verified.
+- Reused milestone 3's live target checks and pointer-transparent Shadow DOM overlay. Added cleanup for click listeners, pending selections, page/tab changes, Stop, mode changes, and panel closure. The background retains the panel's last owned tab even if reinjection replaces the content connection, so panel closure can still clear the current registry. Explicit pagehide disconnection supplements normal port shutdown.
+- Added `tests/fixtures/guidance.html` and 12 browser workflows in `tests/e2e/guidance.spec.ts`; retained and reran both inspection tests and the complete 20-case overlay matrix. Added 13 session/selector unit tests and one message-validation test; existing tests still pass. Updated README, plan, and test documentation.
+- No new packages, permissions, host permissions, backend, AI requests, screenshots feature, persistence, autonomous browser actions, milestone 4 commit, push, or deployment. The earlier milestone 3 commit remains local; its push was rejected by automatic approval review and was not retried as part of this milestone.
+
+### Milestone 4 checks
+
+- `corepack pnpm typecheck` — exit 0 on final source. Output redirected to `/tmp/clickpilot-m4-typecheck.log`. Strict production and unit-test TypeScript checks passed.
+- `corepack pnpm lint` — exit 0.
+- `corepack pnpm test` — exit 0; 3 test files, 21 tests passed. New checks cover fixture gating, task normalization, ambiguity/missing/disabled controls, malformed output, session/request/snapshot identity, trusted click message shape, scoped old-snapshot cleanup, bounded refresh, delayed cancellation, replacement, navigation invalidation, and a late highlight reply after Stop.
+- `corepack pnpm build` — exit 0; updated MV3 output at `apps/extension/.output/chrome-mv3`. Output redirected to `/tmp/clickpilot-m4-build.log`.
+- `corepack pnpm exec playwright test` — exit 0; 34 tests passed on final code (12 guidance, 20 overlay, 2 inspection), 43.9 seconds. Actual workflow results are listed in `docs/guidance-test-matrix.md`. The successful tests ran with local browser/server access outside the sandbox.
+- Initial unit run: 1 failed, 18 passed. A trailing-space/question-mark normalization issue caused a supported request to be rejected. Trimming before punctuation removal fixed it; final unit suite passes.
+- Initial sandboxed browser command failed before tests: localhost port 4173 binding was denied. The successful browser runs used permitted local server/browser access. This failed invocation is not a passing check.
+- First completed browser suite: 32 passed, 2 failed. Full navigation raced a generic target-invalidation message, and panel-close cleanup missed a current registry created by reinjection outside the panel's displayed snapshot. A focused two-test rerun passed navigation but still failed closure. A synthetic local diagnostic confirmed that reinjection disconnected the content port before panel closure. Retaining the last owned tab and explicitly clearing it on panel disconnection fixed the regression; the final full suite passed all 34.
+- `git diff --check` — exit 0. Manifest verification confirmed MV3 with exactly `activeTab`, `scripting`, `sidePanel`, and no host permissions or manifest content scripts.
+- Visual QA: inspected valid local screenshots at `/tmp/clickpilot-m4-waiting-360.png`, `/tmp/clickpilot-m4-waiting-260.png`, and `/tmp/clickpilot-m4-page.png`. Both panel widths fit without horizontal overflow. The independent scoped finish review returned **ship for user verification**, subject to final browser results, which now pass. The documentation comparison found no material mismatch with the existing design or README. The previously unavailable Impeccable context engine/detector was not installed or rerun.
+- Manual Chrome/Brave verification of milestone 4: NOT RUN by the agent; PENDING USER VERIFICATION. Headless Chromium opens panel HTML in a separate tab, so actual side-panel placement, browser lifecycle differences, and real-user console inspection remain manual checks.
+
+### Milestone 4 known limitations
+
+- This is a local, deterministic, fixed-task mock; general questions and live third-party pages are unsupported. It does not prove AI selection accuracy, verify page outcomes, advance multiple steps, resume after panel closure, or use backend/network services.
+- A trusted click is only an acknowledgement. It is not proof the requested action succeeded. Subsequent navigation may replace the status with a page-change message; it never claims verified completion.
+- Retry repeats the last submitted task and scenario, with fresh observation; change the dropdown and submit again to choose a different scenario. Automatic recovery is limited to one refresh per run.
+- The existing overlay/observer limitations remain: top-level DOM controls only, sampled coverage checks, and conservative removal of clipped/unplaceable targets. One-minute snapshot expiry is implemented but not timed by the new browser suite. No continuous performance or broad-site claim is made.
+- Real Chrome verification of milestone 4 is required before marking it complete. Backend work remains unapproved; milestone 2's separate privacy confirmation and Brave verification remain unrecorded.
 
 ### Milestone 3 implementation
 
@@ -142,7 +177,7 @@ The user confirmed milestone 1 in Chrome and explicitly authorized milestone 2 o
 
 ## Remaining decisions and limitations
 
-- Verify inspection and milestone 3 overlays in Chrome/Brave. The user explicitly approved milestone 3; milestone 2's manual results remain unconfirmed. If verification fails, fix the current approved scope and rerun relevant checks. Do not begin milestone 4 without user confirmation and approval.
+- Verify milestone 4 in Chrome using the steps below. Milestone 3 is verified; milestone 2's separate privacy results remain unconfirmed. If verification fails, fix the current approved scope and rerun relevant checks. Do not begin backend milestone 5A without user verification and explicit approval.
 - Architecture filename differs from the requested path. Future work should read the existing source named above unless the user chooses to rename it.
 - Browser permission and lifecycle behavior must be verified against real Chrome; passing pure-function tests alone is insufficient.
 - Live Gemini testing later requires backend-only credentials and an account with the selected model available. Public hosting requires separately approved deployment and demonstrated abuse/budget controls.
@@ -171,8 +206,28 @@ Status: VERIFIED by the user in Chrome. These steps are retained for regression 
 6. In separate fresh runs, highlight a target and press **Stop**, click **Change route (SPA)**, click **Next page**, switch tabs, or close the side panel. Expect all old decoration to disappear; Stop clears the list, navigation/tab changes show a fresh-inspection state, and reopening the panel requires inspection again. Reinspect after a full reload and repeat panel-close cleanup. Stale outlines or console errors fail.
 7. Leave an inspected/highlighted fixture idle for over one minute. Expect the overlay/list to expire with a reinspection message. Click **Inspect this page** to start fresh. Check the extraction fixture at `http://127.0.0.1:4173` using the earlier milestone 2 privacy steps as well. If using Brave, repeat these checks after reloading the same build on `brave://extensions`.
 
-Report any failed step and exact visible message. After user confirmation, mark verified milestones accordingly. Milestone 4 remains NOT APPROVED; stop here until the user verifies and approves further work.
+These milestone 3 steps remain available for regression checks. The user subsequently verified milestone 3 and explicitly authorized milestone 4; see its current verification section below.
 
 ## Milestone 3 approval and Git authorization
 
-The user confirmed: “Milestone 3 manually verified in Chrome. The correct target is highlighted, geometry remains aligned, clicks pass through, invalid targets are cleared, and cleanup works.” The user also explicitly requested pushing the changes to the `milestone-3` branch. Milestone 3 is VERIFIED. Milestone 2’s separate privacy verification and Brave results remain unconfirmed; milestone 4 is NOT APPROVED. Existing automated evidence above applies to unchanged implementation files; this handoff only updates verification documentation before committing and pushing the completed scope.
+The user confirmed: “Milestone 3 manually verified in Chrome. The correct target is highlighted, geometry remains aligned, clicks pass through, invalid targets are cleared, and cleanup works.” The user also explicitly requested pushing the changes to the `milestone-3` branch. Milestone 3 is VERIFIED and was committed locally as `fed9c64`. Automatic approval review rejected its push because destination ownership/exact-upload authorization could not be established; the agent reported this and did not bypass it. Milestone 4 was separately approved afterward. Milestone 3's Git permission does not authorize a milestone 4 commit or push.
+
+## User verification for milestone 4
+
+Status: AWAITING USER VERIFICATION. Reload the fixture between destructive cases. Lists expire after one minute; Retry observes again.
+
+1. Run `corepack pnpm build`, reload ClickPilot at `chrome://extensions`, and refresh the fixture tab. Start `python3 -m http.server 4173 --directory tests/fixtures` if needed, then open `http://127.0.0.1:4173/guidance.html`. Click the ClickPilot toolbar icon **on that tab**. Expect **Mock guidance** selected and **Mock mode · Local only** visible. If the panel is blank or cannot inspect, check the extension card's **Errors**, service-worker console, panel console, and page console.
+2. Enter **find primary target** and choose **Start mock guidance**. Expect the primary target outlined, an arrow/tooltip, and “Waiting for you to act.” The fixture must remain at **Clicks: 0**, with no automatic scroll, typing, navigation, or click. Click the target yourself, including its text. Expect **Clicks: 1**, overlay removal, and **Click observed** with an explicit statement that the task has not been verified complete. Any automatic action or false completion claim fails.
+3. Submit **find settings**. Expect clarification between two matching controls and no overlay. Submit **find navigation settings**, then **find dialog settings** in separate runs. Expect the corresponding exact controls, with no guessed target. Submit **delete my account**; expect an unsupported-task message. Wrong targets or fabricated guidance fail.
+4. Reload the fixture and click **Remove primary target**, then submit **find primary target**. Expect a missing-control limitation and no overlay. Reload again, start guidance, then click **Cover primary target**. Expect decoration removed and a paused/unavailable message. Click Retry with the cover still present; expect bounded failure, never an endless loop.
+5. Open **Mock test scenarios**, choose **Delay selection by 2 seconds**, and submit **find primary target**. While selecting, press **Stop**. Wait at least three seconds: expect the stopped state and no late overlay. Press **Retry**: it repeats the delayed task and should eventually highlight. In a separate run, submit a delayed task, then choose **Normal** and submit **find profile** before it finishes. Expect only Profile highlighted, including after the old delay has elapsed. A stale overlay or status replacing the newer task fails.
+6. Choose **Stale target once, then recover** and submit **find primary target**. Expect one fresh observation followed by a valid highlight. Choose **Stale target on both attempts** and submit again. Expect a pause after one refresh with no overlay. Choose **Invalid mock output** and submit: expect a clear error and no overlay. To recover, choose **Normal** and submit again. Retry retains the previous scenario.
+7. In separate runs, navigate with **Next page**, click **Change route (SPA)**, switch tabs, close the panel, or switch to **Manual highlights** while selecting/waiting. Expect cancellation and old decoration removed. Return to the fixture, reactivate if needed, and start fresh. Closing/reopening does not resume old guidance. Stale decoration or console errors fail.
+8. Open `http://127.0.0.1:4173/overlay.html`, activate the toolbar, and submit **find primary target** in Mock guidance. Expect refusal because it is not the guidance fixture. Choose **Manual highlights**, inspect, and select Primary target to confirm the milestone 3 debug flow remains available. The mock must not silently run on arbitrary websites.
+9. Inspect Network and page/worker/panel consoles during the fixture flow. Expect no backend/model requests, screenshot capture, sensitive value logging, or unexpected errors. If desired, use the page console on this synthetic fixture to call `document.getElementById('primary').click()` while waiting: its fixture handler may run, but ClickPilot must keep waiting because this is a synthetic event. A real user click must acknowledge. Repeat the normal flow in Brave if used; report its result separately.
+
+Report any failed step and exact visible message. Stop at milestone 4 until the user confirms verification and explicitly approves milestone 5A. The implementation request alone did not authorize backend work, commit, push, deployment, or publication; the separate Git authorization below permits the requested branch handoff.
+
+## Milestone 4 Git authorization
+
+The user subsequently requested: “good , now push the relevant code to milestone 4 branch”. This authorizes committing the milestone 4 source, tests, fixtures, and documentation and pushing `milestone-4` to the configured `origin` (`https://github.com/anantjain-afk/ClickPilot.git`). Manual Chrome verification remains AWAITING USER VERIFICATION; no specific manual result is inferred from “good”. The implementation has not changed since the recorded successful checks; this handoff only adds Git authorization documentation. No merge, deployment, or next milestone is authorized.

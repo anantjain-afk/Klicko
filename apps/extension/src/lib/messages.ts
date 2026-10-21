@@ -13,6 +13,12 @@ export interface PageSnapshot {
   pageKey: string;
   snapshotId: string;
   elements: ObservedElement[];
+  mockFixture?: boolean;
+}
+
+export interface GuidanceIdentity {
+  sessionId: string;
+  requestId: number;
 }
 
 export interface OverlayTarget {
@@ -20,16 +26,17 @@ export interface OverlayTarget {
   snapshotId: string;
   targetId: string;
   instruction: string;
+  guidance?: GuidanceIdentity;
 }
 
 export type PanelRequest =
   | { type: 'INSPECT_ACTIVE_TAB'; requestId: number }
-  | { type: 'STOP_INSPECTION'; tabId: number }
+  | { type: 'STOP_INSPECTION'; tabId: number; snapshotId?: string }
   | ({ type: 'HIGHLIGHT_ELEMENT'; tabId: number } & OverlayTarget);
 
 export type ContentRequest =
   | { type: 'COLLECT_ELEMENTS' }
-  | { type: 'CLEAR_ELEMENTS' }
+  | { type: 'CLEAR_ELEMENTS'; snapshotId?: string }
   | ({ type: 'SHOW_OVERLAY' } & OverlayTarget);
 
 export type OverlayResponse = { type: 'OVERLAY_RESULT'; ok: boolean };
@@ -38,6 +45,13 @@ export type PageInvalidation = {
   pageKey: string;
   snapshotId: string;
 } & ({ type: 'OVERLAY_INVALIDATED'; targetId: string } | { type: 'SNAPSHOT_INVALIDATED' });
+
+export interface GuidanceClick extends GuidanceIdentity {
+  type: 'GUIDANCE_CLICKED';
+  pageKey: string;
+  snapshotId: string;
+  targetId: string;
+}
 
 export type InspectionResponse =
   | { type: 'INSPECTION_RESULT'; requestId: number; tabId: number; snapshot: PageSnapshot }
@@ -60,20 +74,36 @@ function isOverlayTarget(value: Record<string, unknown>): boolean {
   return isPageIdentity(value)
     && typeof value.targetId === 'string' && /^el_\d{1,3}$/.test(value.targetId)
     && typeof value.instruction === 'string' && value.instruction.trim().length > 0
-    && value.instruction.length <= 240;
+    && value.instruction.length <= 240
+    && (value.guidance === undefined || (isRecord(value.guidance)
+      && typeof value.guidance.sessionId === 'string' && value.guidance.sessionId.length > 0
+      && value.guidance.sessionId.length <= 80 && isId(value.guidance.requestId)));
+}
+
+function hasOptionalSnapshotId(value: Record<string, unknown>): boolean {
+  return value.snapshotId === undefined
+    || (typeof value.snapshotId === 'string' && value.snapshotId.length > 0 && value.snapshotId.length <= 80);
 }
 
 export function isPanelRequest(value: unknown): value is PanelRequest {
   if (!isRecord(value)) return false;
   if (value.type === 'INSPECT_ACTIVE_TAB') return isId(value.requestId);
-  if (value.type === 'STOP_INSPECTION') return isId(value.tabId);
+  if (value.type === 'STOP_INSPECTION') return isId(value.tabId) && hasOptionalSnapshotId(value);
   if (value.type === 'HIGHLIGHT_ELEMENT') return isId(value.tabId) && isOverlayTarget(value);
   return false;
 }
 
 export function isContentRequest(value: unknown): value is ContentRequest {
-  return isRecord(value) && (value.type === 'COLLECT_ELEMENTS' || value.type === 'CLEAR_ELEMENTS'
+  return isRecord(value) && (value.type === 'COLLECT_ELEMENTS'
+    || (value.type === 'CLEAR_ELEMENTS' && hasOptionalSnapshotId(value))
     || (value.type === 'SHOW_OVERLAY' && isOverlayTarget(value)));
+}
+
+export function isGuidanceClick(value: unknown): value is GuidanceClick {
+  return isRecord(value) && value.type === 'GUIDANCE_CLICKED' && isPageIdentity(value)
+    && typeof value.targetId === 'string' && /^el_\d{1,3}$/.test(value.targetId)
+    && typeof value.sessionId === 'string' && value.sessionId.length > 0 && value.sessionId.length <= 80
+    && isId(value.requestId);
 }
 
 export function isOverlayResponse(value: unknown): value is OverlayResponse {
@@ -109,6 +139,7 @@ export function isPageSnapshot(value: unknown): value is PageSnapshot {
     && typeof value.pageKey === 'string' && value.pageKey.length > 0 && value.pageKey.length <= 80
     && typeof value.snapshotId === 'string' && value.snapshotId.length > 0 && value.snapshotId.length <= 80
     && Array.isArray(value.elements) && value.elements.length <= MAX_ELEMENTS
+    && (value.mockFixture === undefined || typeof value.mockFixture === 'boolean')
     && value.elements.every(isObservedElement)
     && new Set(value.elements.map((element: ObservedElement) => element.id)).size === value.elements.length;
 }

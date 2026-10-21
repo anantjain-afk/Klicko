@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { browser, type Browser } from 'wxt/browser';
 import { isInspectionResponse, isOverlayResponse, isPageInvalidation, type PageSnapshot } from '../../src/lib/messages';
+import { MockGuidance } from '../../src/features/session/MockGuidance';
 import './style.css';
 
 type ViewState =
@@ -17,7 +18,7 @@ const ERROR_MESSAGES = {
   changed: 'The page changed during inspection. Try again on the current tab.',
 };
 
-function App() {
+function ManualInspection() {
   const [view, setView] = useState<ViewState>({ kind: 'idle' });
   const [overlayStatus, setOverlayStatus] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -31,6 +32,7 @@ function App() {
   function clearInspection() {
     requestId.current += 1;
     const tabId = observedTabId.current;
+    const snapshotId = currentSnapshot.current?.snapshotId;
     observedTabId.current = null;
     currentSnapshot.current = null;
     currentTargetId.current = null;
@@ -39,7 +41,7 @@ function App() {
     setHighlighting(false);
     setView({ kind: 'idle' });
     if (tabId !== null) {
-      void browser.runtime.sendMessage({ type: 'STOP_INSPECTION', tabId }).catch(() => undefined);
+      void browser.runtime.sendMessage({ type: 'STOP_INSPECTION', tabId, snapshotId }).catch(() => undefined);
     }
   }
 
@@ -80,6 +82,9 @@ function App() {
     }
     function onPageHide() {
       clearInspection();
+      const connection = panelConnection.current;
+      panelConnection.current = null;
+      connection?.disconnect();
     }
 
     browser.tabs.onActivated.addListener(onTabActivated);
@@ -87,6 +92,7 @@ function App() {
     browser.tabs.onUpdated.addListener(onTabUpdated);
     window.addEventListener('pagehide', onPageHide);
     return () => {
+      requestId.current += 1;
       browser.tabs.onActivated.removeListener(onTabActivated);
       browser.runtime.onMessage.removeListener(onInvalidation);
       browser.tabs.onUpdated.removeListener(onTabUpdated);
@@ -107,7 +113,7 @@ function App() {
       });
       if (currentRequestId !== requestId.current) {
         if (isInspectionResponse(response) && response.type === 'INSPECTION_RESULT') {
-          void browser.runtime.sendMessage({ type: 'STOP_INSPECTION', tabId: response.tabId }).catch(() => undefined);
+          void browser.runtime.sendMessage({ type: 'STOP_INSPECTION', tabId: response.tabId, snapshotId: response.snapshot.snapshotId }).catch(() => undefined);
         }
         return;
       }
@@ -161,17 +167,7 @@ function App() {
   }
 
   return (
-    <main className="panel">
-      <header className="panel-header">
-        <div className="brand">
-          <span className="brand-mark" aria-hidden="true">
-            <span />
-          </span>
-          <span>ClickPilot</span>
-        </div>
-        <span className="status">Manual highlights</span>
-      </header>
-
+    <>
       <section className="welcome" aria-labelledby="welcome-title">
         <h1 id="welcome-title">See what’s on this page.</h1>
         <p>Inspect this tab, then choose a control to highlight. You make every click. The list stays in this extension.</p>
@@ -210,7 +206,27 @@ function App() {
         </section>
       )}
 
-      <footer>Inspection does not click, type, or send page details to a server.</footer>
+    </>
+  );
+}
+
+function App() {
+  const [mode, setMode] = useState<'mock' | 'manual'>('mock');
+  return (
+    <main className="panel">
+      <header className="panel-header">
+        <div className="brand">
+          <span className="brand-mark" aria-hidden="true"><span /></span>
+          <span>ClickPilot</span>
+        </div>
+        <span className="status">{mode === 'mock' ? 'Mock mode · Local only' : 'Manual highlights'}</span>
+      </header>
+      <nav className="mode-switch" aria-label="Guidance mode">
+        <button type="button" aria-pressed={mode === 'mock'} onClick={() => setMode('mock')}>Mock guidance</button>
+        <button type="button" aria-pressed={mode === 'manual'} onClick={() => setMode('manual')}>Manual highlights</button>
+      </nav>
+      {mode === 'mock' ? <MockGuidance /> : <ManualInspection />}
+      <footer>ClickPilot waits for you. Page details stay in this extension.</footer>
     </main>
   );
 }

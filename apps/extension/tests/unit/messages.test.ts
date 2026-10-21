@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isContentRequest, isInspectionResponse, isOverlayResponse, isPageInvalidation, isPanelRequest, isTrackPageRequest } from '../../src/lib/messages';
+import { isContentRequest, isGuidanceClick, isInspectionResponse, isOverlayResponse, isPageInvalidation, isPanelRequest, isTrackPageRequest } from '../../src/lib/messages';
 
 describe('message validation', () => {
   it('rejects malformed panel requests', () => {
@@ -28,5 +28,18 @@ describe('message validation', () => {
     expect(isPageInvalidation({ type: 'SNAPSHOT_INVALIDATED' })).toBe(false);
     expect(isTrackPageRequest({ type: 'TRACK_PAGE', tabId: 1 })).toBe(true);
     expect(isTrackPageRequest({ type: 'TRACK_PAGE', tabId: '1' })).toBe(false);
+  });
+
+  it('validates scoped cleanup, guidance identity and click events', () => {
+    const request = { type: 'HIGHLIGHT_ELEMENT', tabId: 1, pageKey: 'page', snapshotId: 'snapshot', targetId: 'el_1', instruction: 'Click it yourself.' };
+    expect(isPanelRequest({ ...request, guidance: { sessionId: 'session', requestId: 2 } })).toBe(true);
+    expect(isPanelRequest({ ...request, guidance: { sessionId: '', requestId: -1 } })).toBe(false);
+    expect(isPanelRequest({ type: 'STOP_INSPECTION', tabId: 1, snapshotId: '' })).toBe(false);
+    expect(isContentRequest({ type: 'CLEAR_ELEMENTS', snapshotId: 1 })).toBe(false);
+    const click = { type: 'GUIDANCE_CLICKED', pageKey: 'page', snapshotId: 'snapshot', targetId: 'el_1', sessionId: 'session', requestId: 2 };
+    expect(isGuidanceClick(click)).toBe(true);
+    expect(isGuidanceClick({ ...click, sessionId: undefined })).toBe(false);
+    expect(isGuidanceClick({ ...click, requestId: '2' })).toBe(false);
+    expect(isGuidanceClick({ ...click, targetId: '#selector' })).toBe(false);
   });
 });

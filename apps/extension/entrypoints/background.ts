@@ -55,7 +55,7 @@ async function handlePanelRequest(request: PanelRequest): Promise<InspectionResp
     }
     return isOverlayResponse(response) ? response : { type: 'OVERLAY_RESULT', ok: false };
   }
-  await browser.tabs.sendMessage(request.tabId, { type: 'CLEAR_ELEMENTS' }).catch(() => undefined);
+  await browser.tabs.sendMessage(request.tabId, { type: 'CLEAR_ELEMENTS', snapshotId: request.snapshotId }, { frameId: 0 }).catch(() => undefined);
   return { ok: true };
 }
 
@@ -69,17 +69,24 @@ export default defineBackground(() => {
     let connectedTabId: number | undefined;
     panel.onMessage.addListener((message: unknown) => {
       if (!isTrackPageRequest(message)) return;
-      if (connectedTabId === message.tabId) return;
+      if (page && connectedTabId === message.tabId) return;
       page?.disconnect();
       connectedTabId = message.tabId;
       page = browser.tabs.connect(message.tabId, { name: 'clickpilot-page', frameId: 0 });
       const connection = page;
       connection.onDisconnect.addListener(() => {
         void browser.runtime.lastError;
-        if (page === connection) { page = undefined; connectedTabId = undefined; }
+        if (page === connection) page = undefined;
       });
     });
-    panel.onDisconnect.addListener(() => page?.disconnect());
+    panel.onDisconnect.addListener(() => {
+      page?.disconnect();
+      // Re-injection can replace the page connection before the panel closes.
+      // Keep the last owned tab so closing still clears its current registry.
+      if (connectedTabId !== undefined) {
+        void browser.tabs.sendMessage(connectedTabId, { type: 'CLEAR_ELEMENTS' }, { frameId: 0 }).catch(() => undefined);
+      }
+    });
   });
   // Earlier builds used automatic panel opening, which can bypass onClicked.
   void browser.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch((error: unknown) => {

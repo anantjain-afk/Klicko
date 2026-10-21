@@ -9,6 +9,7 @@ async function openFixture() {
   await activateToolbar(page, extension.extensionId);
   const panel = await extension.context.newPage();
   await panel.goto(`chrome-extension://${extension.extensionId}/sidepanel.html`);
+  await panel.getByRole('button', { name: 'Manual highlights', exact: true }).click();
   await panel.setViewportSize({ width: 360, height: 800 });
   await page.bringToFront();
   await panel.getByRole('button', { name: 'Inspect this page' }).click();
