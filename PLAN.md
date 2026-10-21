@@ -1,6 +1,6 @@
 # ClickPilot implementation plan
 
-Status: Milestone 1 verified; milestone 2 approved and implemented, awaiting user verification. Later milestones remain proposed.
+Status: Milestone 1 verified; milestone 2 implemented with manual verification still unconfirmed. User explicitly approved continuing with milestone 3 on 21 October 2026; milestone 3 is implemented and manually verified by the user in Chrome. Later milestones remain proposed.
 Prepared: 21 October 2026.
 
 ## Sources and architecture review
@@ -232,4 +232,4 @@ Add timeout/cancellation, response validation at both trust boundaries, stale re
 
 ## Recommended next approval
 
-Milestone 1 is verified. Milestone 2 is implemented and awaiting user verification. Milestone 3 remains proposed until the user confirms milestone 2 and explicitly approves the next scope.
+Milestone 3 was explicitly authorized by the user's “ok let's continue with milestone 3” on 21 October 2026. This authorizes the overlay scope; it does not provide a recorded result for milestone 2's Chrome/Brave checks. The user subsequently confirmed milestone 3 in Chrome and authorized pushing it to `milestone-3`. Milestone 3 is VERIFIED; milestone 4 requires fresh approval.

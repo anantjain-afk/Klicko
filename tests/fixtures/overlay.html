@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ClickPilot overlay fixture</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; padding: 32px; font: 16px/1.5 system-ui, sans-serif; color: #202721; background: #f7f6f2; }
+      button, input, a { font: inherit; }
+      button { padding: 10px 16px; cursor: pointer; }
+      nav { display: flex; gap: 16px; align-items: center; }
+      main { margin-top: 32px; }
+      #target { margin: 24px 0; }
+      #scroller { height: 140px; width: 300px; overflow: auto; border: 1px solid #999; padding: 12px; }
+      #nested { margin-top: 24px; }
+      .spacer { height: 500px; }
+      dialog[open] { position: absolute; top: 160px; right: 32px; left: auto; margin: 0; padding: 20px; }
+      .tools { display: flex; flex-wrap: wrap; gap: 8px; max-width: 850px; margin-top: 24px; }
+      #cover { position: fixed; display: none; background: #d4bda6; z-index: 10; }
+    </style>
+  </head>
+  <body>
+    <nav aria-label="Main navigation">
+      <a href="/index.html">Extraction fixture</a>
+      <a href="/second.html">Next page</a>
+      <button id="nav-settings">Settings</button>
+    </nav>
+    <main>
+      <h1>Overlay checks</h1>
+      <p>Select a control in ClickPilot, then interact with this page yourself.</p>
+      <button id="target">Primary target</button>
+      <output id="click-count">Clicks: 0</output>
+      <p><label>Project name <input id="project" /></label></p>
+      <div id="scroller"><button id="nested">Nested target</button><div class="spacer"></div></div>
+      <div class="tools">
+        <button id="move">Move target</button>
+        <button id="hide">Hide target</button>
+        <button id="remove">Remove target</button>
+        <button id="cover-button">Cover target</button>
+        <button id="spa">Change route (SPA)</button>
+      </div>
+      <p>Reload this fixture between destructive checks. Scroll down to test removal when a target leaves view.</p>
+      <div class="spacer"></div>
+    </main>
+    <dialog open aria-label="Preferences"><button id="dialog-settings">Settings</button></dialog>
+    <div id="cover">Covered</div>
+    <script>
+      let clicks = 0;
+      const target = document.getElementById('target');
+      target.addEventListener('click', () => { document.getElementById('click-count').textContent = `Clicks: ${++clicks}`; });
+      document.getElementById('move').onclick = () => { target.style.transform = 'translateX(120px)'; };
+      document.getElementById('hide').onclick = () => { target.hidden = true; };
+      document.getElementById('remove').onclick = () => { target.remove(); };
+      document.getElementById('cover-button').onclick = () => {
+        const rect = target.getBoundingClientRect();
+        Object.assign(document.getElementById('cover').style, {
+          display: 'block', left: `${rect.x}px`, top: `${rect.y}px`, width: `${rect.width}px`, height: `${rect.height}px`,
+        });
+      };
+      document.getElementById('spa').onclick = () => { history.pushState({}, '', '#changed'); };
+    </script>
+  </body>
+</html>

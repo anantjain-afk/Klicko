@@ -89,7 +89,7 @@ function contextFor(element: HTMLElement): string {
   return landmark.tagName.toLowerCase();
 }
 
-function isVisible(element: HTMLElement, viewport: Window): DOMRect | null {
+export function visibleRect(element: HTMLElement, viewport: Window): DOMRect | null {
   if (!element.isConnected) return null;
   for (let parent: Element | null = element; parent; parent = parent.parentElement) {
     if (parent.hasAttribute('hidden') || parent.hasAttribute('inert') || parent.getAttribute('aria-hidden') === 'true') return null;
@@ -117,7 +117,7 @@ export function collectElements(doc: Document): { elements: ObservedElement[]; r
   for (const element of doc.querySelectorAll<HTMLElement>(CONTROL_SELECTOR)) {
     if (elements.length >= MAX_ELEMENTS) break;
     if (element.closest('[contenteditable]') || isSensitiveInput(element)) continue;
-    const rect = isVisible(element, viewport);
+    const rect = visibleRect(element, viewport);
     if (!rect) continue;
 
     const id = `el_${elements.length + 1}`;

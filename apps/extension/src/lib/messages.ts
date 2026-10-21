@@ -15,13 +15,29 @@ export interface PageSnapshot {
   elements: ObservedElement[];
 }
 
+export interface OverlayTarget {
+  pageKey: string;
+  snapshotId: string;
+  targetId: string;
+  instruction: string;
+}
+
 export type PanelRequest =
   | { type: 'INSPECT_ACTIVE_TAB'; requestId: number }
-  | { type: 'STOP_INSPECTION'; tabId: number };
+  | { type: 'STOP_INSPECTION'; tabId: number }
+  | ({ type: 'HIGHLIGHT_ELEMENT'; tabId: number } & OverlayTarget);
 
 export type ContentRequest =
   | { type: 'COLLECT_ELEMENTS' }
-  | { type: 'CLEAR_ELEMENTS' };
+  | { type: 'CLEAR_ELEMENTS' }
+  | ({ type: 'SHOW_OVERLAY' } & OverlayTarget);
+
+export type OverlayResponse = { type: 'OVERLAY_RESULT'; ok: boolean };
+
+export type PageInvalidation = {
+  pageKey: string;
+  snapshotId: string;
+} & ({ type: 'OVERLAY_INVALIDATED'; targetId: string } | { type: 'SNAPSHOT_INVALIDATED' });
 
 export type InspectionResponse =
   | { type: 'INSPECTION_RESULT'; requestId: number; tabId: number; snapshot: PageSnapshot }
@@ -35,15 +51,43 @@ function isId(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }
 
+function isPageIdentity(value: Record<string, unknown>): boolean {
+  return typeof value.pageKey === 'string' && value.pageKey.length > 0 && value.pageKey.length <= 80
+    && typeof value.snapshotId === 'string' && value.snapshotId.length > 0 && value.snapshotId.length <= 80;
+}
+
+function isOverlayTarget(value: Record<string, unknown>): boolean {
+  return isPageIdentity(value)
+    && typeof value.targetId === 'string' && /^el_\d{1,3}$/.test(value.targetId)
+    && typeof value.instruction === 'string' && value.instruction.trim().length > 0
+    && value.instruction.length <= 240;
+}
+
 export function isPanelRequest(value: unknown): value is PanelRequest {
   if (!isRecord(value)) return false;
   if (value.type === 'INSPECT_ACTIVE_TAB') return isId(value.requestId);
   if (value.type === 'STOP_INSPECTION') return isId(value.tabId);
+  if (value.type === 'HIGHLIGHT_ELEMENT') return isId(value.tabId) && isOverlayTarget(value);
   return false;
 }
 
 export function isContentRequest(value: unknown): value is ContentRequest {
-  return isRecord(value) && (value.type === 'COLLECT_ELEMENTS' || value.type === 'CLEAR_ELEMENTS');
+  return isRecord(value) && (value.type === 'COLLECT_ELEMENTS' || value.type === 'CLEAR_ELEMENTS'
+    || (value.type === 'SHOW_OVERLAY' && isOverlayTarget(value)));
+}
+
+export function isOverlayResponse(value: unknown): value is OverlayResponse {
+  return isRecord(value) && value.type === 'OVERLAY_RESULT' && typeof value.ok === 'boolean';
+}
+
+export function isPageInvalidation(value: unknown): value is PageInvalidation {
+  return isRecord(value) && isPageIdentity(value)
+    && ((value.type === 'OVERLAY_INVALIDATED' && typeof value.targetId === 'string' && /^el_\d{1,3}$/.test(value.targetId))
+      || value.type === 'SNAPSHOT_INVALIDATED');
+}
+
+export function isTrackPageRequest(value: unknown): value is { type: 'TRACK_PAGE'; tabId: number } {
+  return isRecord(value) && value.type === 'TRACK_PAGE' && isId(value.tabId);
 }
 
 function isObservedElement(value: unknown): value is ObservedElement {

@@ -125,6 +125,7 @@ h1 {
 }
 
 .primary-button:focus-visible,
+.highlight-button:focus-visible,
 .text-button:focus-visible {
   outline: 3px solid #8dad98;
   outline-offset: 3px;
@@ -184,7 +185,7 @@ h1 {
 
 .element-list li {
   display: grid;
-  grid-template-columns: 46px 1fr;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
   column-gap: 8px;
   padding: 10px 0;
   border-bottom: 1px solid #e1e4dc;
@@ -195,6 +196,36 @@ h1 {
   color: #627166;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
+}
+
+.element-detail { grid-column: 2; }
+
+.highlight-button {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  align-self: center;
+  padding: 8px;
+  border: 1px solid #9aafa0;
+  border-radius: 6px;
+  color: #315c43;
+  background: transparent;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  cursor: pointer;
+}
+
+.highlight-button:hover:not(:disabled),
+.highlight-button[aria-pressed="true"] { background: #e7ece5; }
+.highlight-button:disabled { opacity: 0.55; cursor: default; }
+.selected .element-name { color: #315c43; }
+.overlay-status { margin-top: 12px; color: #526056; font-size: 12px; line-height: 1.5; }
+
+@media (max-width: 320px) {
+  .panel { padding-inline: 16px; }
+  .element-list li { grid-template-columns: 36px minmax(0, 1fr); row-gap: 4px; }
+  .highlight-button { grid-column: 2; grid-row: 3; justify-self: start; }
 }
 
 .element-name {
