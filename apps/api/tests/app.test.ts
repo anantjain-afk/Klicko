@@ -6,7 +6,7 @@ import runnable from '../src/index';
 import fixture from './fixtures/valid-request.json';
 
 const path = '/v1/guidance/next';
-const highlight = { kind: 'highlight', targetId: 'el_1', instruction: 'Click Settings yourself.', expectedOutcome: { type: 'manual_confirmation' } };
+const highlight = { kind: 'guidance', targetId: 'el_1', instruction: 'Click Settings yourself.', message: 'You can open Settings here.' };
 function request() { return structuredClone(fixture); }
 function post(value: unknown) { return { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(value) }; }
 async function expectError(response: Response, status: number, code: string) {
@@ -20,11 +20,11 @@ async function expectError(response: Response, status: number, code: string) {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('runnable local API', () => {
-  it('returns provider unavailable for valid input without network requests or logs', async () => {
+  it('returns service disabled for valid input without configuration, network requests or logs', async () => {
     const fetch = vi.fn();
     vi.stubGlobal('fetch', fetch);
     const logs = [vi.spyOn(console, 'log'), vi.spyOn(console, 'error'), vi.spyOn(console, 'warn')];
-    await expectError(await runnable.request(path, post(request())), 503, 'provider_unavailable');
+    await expectError(await runnable.request(path, post(request())), 503, 'service_disabled');
     expect(fetch).not.toHaveBeenCalled();
     for (const log of logs) expect(log).not.toHaveBeenCalled();
   });
@@ -55,12 +55,12 @@ describe('runnable local API', () => {
     for (const variant of variants) await expectError(await runnable.request(path, post(variant)), 400, 'invalid_request');
   });
 
-  it('bounds strings, counts, roles, rectangles, viewport and protocol fields', async () => {
+  it('bounds strings/counts/roles and rejects geometry, viewport and old protocol fields', async () => {
     const original = request();
     const variants = [
       { ...original, userGoal: 'x'.repeat(241) },
       { ...original, operation: 'click' },
-      { ...original, protocolVersion: 2 },
+      { ...original, protocolVersion: 1 },
       { ...original, requestId: -1 },
       { ...original, sessionId: 'not-a-session' },
       { ...original, elements: [{ ...original.elements[0], name: 'x'.repeat(81) }] },
@@ -133,7 +133,7 @@ describe('test-only provider boundary', () => {
     const response = await createApp(provider).request(path, post(original));
     expect(response.status).toBe(200);
     expect(provider).toHaveBeenCalledWith({ userGoal: 'Find Settings', page: { origin: 'https://example.com' },
-      elements: [{ id: 'el_1', role: 'button', name: 'Settings', context: 'Main navigation' }] });
+      elements: [{ id: 'el_1', role: 'button', name: 'Settings', context: 'Main navigation' }] }, expect.any(AbortSignal));
     expect(JSON.stringify(provider.mock.calls)).not.toMatch(/PRIVATE-|fixture-page|fixture-snapshot|rect|viewport/);
     expect(await response.json()).toMatchObject({ sessionId: original.sessionId, requestId: original.requestId, result: highlight });
   });
@@ -159,7 +159,7 @@ describe('test-only provider boundary', () => {
   });
 
   it('accepts allowlisted result variants without allowing an irrelevant target', async () => {
-    for (const output of [highlight, { kind: 'ask_clarification', question: 'Which Settings control?' }, { kind: 'unsupported', message: 'No matching control.' }, { kind: 'complete', message: 'Test-only completion result.' }]) {
+    for (const output of [highlight, { kind: 'clarification', message: 'Which Settings control?' }, { kind: 'unsupported', message: 'No matching control.' }, { kind: 'answer', message: 'Settings is an observed control.' }]) {
       const response = await createApp(async () => output).request(path, post(request()));
       expect(response.status).toBe(200);
     }
@@ -178,7 +178,7 @@ describe('test-only provider boundary', () => {
     { ...highlight, script: 'document.body.remove()' },
     { ...highlight, expectedOutcome: { type: 'execute', script: 'alert(1)' } },
     { kind: 'complete', message: 'Done', targetId: 'el_1' },
-    { ...highlight, instruction: 'x'.repeat(241) }, { ...highlight, instruction: 'Use sk-private-marker' },
+    { ...highlight, instruction: 'x'.repeat(161) }, { ...highlight, instruction: 'Use sk-private-marker' },
   ])('rejects invalid provider variant %j', async (output) => {
     await expectError(await createApp(async () => output).request(path, post(request())), 502, 'invalid_provider_response');
   });
@@ -205,7 +205,7 @@ describe('test-only provider boundary', () => {
 
   it('validates response identity against the originating request', () => {
     const original = GuidanceRequestSchema.parse(request());
-    const response = { protocolVersion: 1, sessionId: original.sessionId, requestId: original.requestId, pageKey: original.page.pageKey, snapshotId: original.page.snapshotId, result: highlight };
+    const response = { protocolVersion: 2, sessionId: original.sessionId, requestId: original.requestId, pageKey: original.page.pageKey, snapshotId: original.page.snapshotId, result: highlight };
     expect(validateGuidanceResponse(response, original, ['el_1'])).not.toBeNull();
     for (const invalid of [{ requestId: 2 }, { sessionId: '7bbf7fc2-9b30-4cf8-9563-66fdacb01d21' }, { pageKey: 'old-page' }, { snapshotId: 'old-snapshot' }]) {
       expect(validateGuidanceResponse({ ...response, ...invalid }, original, ['el_1'])).toBeNull();

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { browser, type Browser } from 'wxt/browser';
 import { isInspectionResponse, isOverlayResponse, isPageInvalidation, type PageSnapshot } from '../../src/lib/messages';
+import { AssistantPanel } from '../../src/features/session/AssistantPanel';
 import { MockGuidance } from '../../src/features/session/MockGuidance';
 import './style.css';
 
@@ -211,7 +212,7 @@ function ManualInspection() {
 }
 
 function App() {
-  const [mode, setMode] = useState<'mock' | 'manual'>('mock');
+  const [mode, setMode] = useState<'mock' | 'manual' | 'assistant'>('mock');
   return (
     <main className="panel">
       <header className="panel-header">
@@ -219,14 +220,15 @@ function App() {
           <span className="brand-mark" aria-hidden="true"><span /></span>
           <span>ClickPilot</span>
         </div>
-        <span className="status">{mode === 'mock' ? 'Mock mode · Local only' : 'Manual highlights'}</span>
+        <span className="status">{mode === 'mock' ? 'Mock mode · Local only' : mode === 'assistant' ? 'Gemini · One question' : 'Manual highlights'}</span>
       </header>
       <nav className="mode-switch" aria-label="Guidance mode">
+        <button type="button" aria-pressed={mode === 'assistant'} onClick={() => setMode('assistant')}>AI assistant</button>
         <button type="button" aria-pressed={mode === 'mock'} onClick={() => setMode('mock')}>Mock guidance</button>
         <button type="button" aria-pressed={mode === 'manual'} onClick={() => setMode('manual')}>Manual highlights</button>
       </nav>
-      {mode === 'mock' ? <MockGuidance /> : <ManualInspection />}
-      <footer>ClickPilot waits for you. Page details stay in this extension.</footer>
+      {mode === 'assistant' ? <AssistantPanel /> : mode === 'mock' ? <MockGuidance /> : <ManualInspection />}
+      <footer>ClickPilot waits for you. {mode === 'assistant' ? 'Gemini replies can be mistaken.' : 'Page details stay in this extension.'}</footer>
     </main>
   );
 }

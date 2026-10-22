@@ -12,7 +12,7 @@ Milestone 2: AWAITING USER VERIFICATION.
 Milestone 3: VERIFIED by the user in Chrome on 21 October 2026.
 Milestone 4: AWAITING USER VERIFICATION — explicitly approved by the user on 21 October 2026.
 Milestone 5A: VERIFIED by the user on 22 October 2026.
-Next proposed milestone: 5B — Real Gemini single-step guidance; not approved.
+Milestone 5B: VERIFIED by the user on 22 October 2026. Relevant commit/push to `milestone-5B` is authorized; milestone 6A and deployment remain unapproved.
 
 The user confirmed milestone 1 in Chrome and explicitly authorized milestone 2 on 21 October 2026. The user then reported that inspection failed on the localhost fixture in both Brave and Chrome. A focused milestone 2 fix is implemented and automated checks pass. The user subsequently said “ok let's continue with milestone 3,” explicitly authorizing that scope. Work proceeded on milestone 3; no manual milestone 2 pass is inferred from that authorization. Verify inspection and overlays together in Chrome (and Brave if used).
 
@@ -38,7 +38,7 @@ The user subsequently said “ok , now continue with milestone 5A,” explicitly
 | 3 | Highlight, arrow, tooltip | VERIFIED | User confirmed correct targets, aligned geometry, click-through, invalidation, and cleanup in Chrome |
 | 4 | Mocked single-step guidance | AWAITING USER VERIFICATION | 21 unit tests and 34 browser tests passed; manual Chrome check pending |
 | 5A | Local backend contract and validation | VERIFIED | User confirmed verification on 22 October 2026; prior automated evidence remains recorded |
-| 5B | Real Gemini single-step guidance | NOT APPROVED | Not run |
+| 5B | Conversational Gemini replies with single-step visual guidance | VERIFIED | User confirmed manual verification on 22 October 2026; 55 mocked API + 37 extension unit tests; 55 Chromium tests; five actual local HTTP checks; four real Gemini outcome smoke cases passed |
 | 6A | Multi-step outcome verification | NOT APPROVED | Not run |
 | 6B | Navigation and lifecycle recovery | NOT APPROVED | Not run |
 | 7 | Optional screenshot fallback | NOT APPROVED — OPTIONAL | Not run |
@@ -283,3 +283,82 @@ The user subsequently confirmed milestone 5A verification and authorized its bra
 ## Milestone 5A verification and Git authorization
 
 On 22 October 2026 the user stated: “ok , great 5A verification is done , push it in milestone-5A”. Milestone 5A is VERIFIED. This authorizes committing its relevant API/shared source, tests, fixtures, tooling, lockfile, and documentation and pushing `milestone-5A` to the configured origin (`https://github.com/anantjain-afk/ClickPilot.git`). No implementation changed after the recorded passing checks; this handoff only updates verification/authorization documentation. Milestone 5B remains NOT APPROVED.
+
+## Milestone 5B plan revision — 22 October 2026
+
+Status: REVISED PLAN — AWAITING USER APPROVAL. The user requested conversational assistance alongside visual guidance and explicitly prohibited coding before revised-plan approval.
+
+- Updated only `PLAN.md` and this record. No schemas, implementation, dependencies, permissions, provider configuration, secrets, commits, pushes or deployments were changed/performed for this revision.
+- Proposed three outcome categories using four strict literals: `guidance` (panel message + observed target + tooltip), `answer` (panel text), and `clarification` / `unsupported` (question or honest explanation). Panel messages are bounded to 600 characters; tooltip instructions to 160. Only guidance accepts a target; every model string renders literally.
+- Documented a proposed protocol 2 migration, `AssistantResultSchema`, removal of model `complete` / `expectedOutcome` fields, and the scoped shared/API/session/panel/routing/config/test/documentation changes. Current protocol 1 code stays unchanged until approval. An answer never implies verified completion.
+- Preserved standalone single-step requests, no history/memory/planning/autonomous actions, no automatic follow-up after clicks, privacy/minimization, dual-boundary Zod validation, identity guards, Stop/Retry/cancellation, one-refresh recovery and safe errors/kill switch. Added tests/manual steps for text-only as well as visual outcomes.
+- Validation: documentation diff/consistency checks only. Runtime tests, builds and Gemini calls were not rerun because no implementation changed. Prior evidence does not imply that the proposed 5B contract is implemented.
+
+Stop here. Await explicit approval of the revised milestone 5B plan before implementation.
+
+
+## Milestone 5B implementation — 22 October 2026
+
+Status: **VERIFIED**. The user explicitly approved the revised plan, implementation and checks, then configured the ignored backend secret locally. After implementation, the user confirmed manual verification and authorized the relevant commit/push to `milestone-5B`. Earlier planning-only gates above record their historical state; this approval superseded them for 5B only. No deployment or milestone 6A is authorized.
+
+### What changed and why
+
+- `packages/shared/src/guidance.ts` now defines protocol **2** and strict `AssistantResultSchema`: guidance (panel message + observed target + tooltip), answer, clarification and unsupported. Messages are trimmed/nonempty and bounded to 600 characters; instructions to 160. Old outcomes/protocol, extra fields, executable plans/selectors and target fields on text-only outcomes are rejected. An answer never means task completion.
+- `apps/api/src/gemini.ts` adds one direct REST `generateContent` call per independent request, backend-only key/model configuration, supported JSON schema, 20-second timeout, abort propagation and safe provider/quota/invalid-output errors. `app.ts` applies Zod, privacy checks and eligible-target membership before returning server-supplied identity. No provider SDK/framework or new third-party library was added. The existing Zod version is now a direct backend dependency for validating Google's response envelope; the extension links the existing shared workspace package.
+- Privacy filtering runs **before extension upload and again on the backend**. The client sends only the current question, origin, eligible labels/control inventory and envelope IDs. Protocol 2 drops geometry/viewport from HTTP requests. Gemini receives no envelope IDs, paths, query/hash, field values, prior turns or screenshots. Filtering still has the documented heuristic limitations.
+- `src/lib/assistant.ts`, background routing and a small `GET_SNAPSHOT` content message reuse the current registry and active-tab/document checks. The fixed client endpoint is exactly `http://127.0.0.1:8787/v1/guidance/next`. The explained loopback host permission was added; an explicit tab/origin toolbar grant prevents that host grant from silently activating DOM inspection. Worker restart requires another toolbar click; no storage permission/persistent background session was introduced.
+- `session.ts` shares existing observation/highlight/cancellation logic between Mock and Assistant. One focused hook reuses existing panel connections/events instead of duplicating their lifecycle code. A valid but unavailable target permits one refresh; invalid/invented IDs are rejected. Guidance text appears only after live target acceptance. Text-only replies do not render overlays and remain snapshot-bound for invalidation. Stop, replacement, navigation, tab change, expiry, disconnection and panel closure reject stale text and guidance alike. Clicks only acknowledge an unverified action; they never start another request.
+- `AssistantPanel.tsx` adds the current question/reply, a bounded input, disclosure/consent and Stop/Retry while preserving labelled Mock and Manual modes. Model strings use ordinary React text children; existing tooltips use `textContent`. No history, Markdown/HTML renderer, automatic actions or arbitrary page-prose extraction was added.
+- Updated setup/contracts/manual steps in `docs/local-api.md`, README and PLAN. `apps/api/.dev.vars` is Git-ignored; its key was never printed or copied into source/client bundles.
+
+### Actual automated evidence
+
+All final checks below completed with exit **0**:
+
+| Exact command/check | Result | Provider boundary |
+|---|---|---|
+| `CI=true corepack pnpm install --ignore-scripts --no-frozen-lockfile` | Workspace links/lockfile updated; existing packages restored | No provider calls |
+| `corepack pnpm typecheck` | Shared, API and extension strict TypeScript passed | No provider calls |
+| `corepack pnpm lint` | ESLint passed | No provider calls |
+| `corepack pnpm test` | **55 API tests + 37 extension unit tests passed** | Injected/mock fetch/provider replies only |
+| `corepack pnpm build` | Extension production bundle + Worker `wrangler deploy --dry-run` passed; also repeated within final e2e command | No deployment or Gemini calls |
+| `corepack pnpm test:e2e` | **55 Chromium tests passed (55.0 seconds)** | 20 Assistant cases use a test-only HTTP mock at port 8787; remaining cases cover Mock/Manual/observer/overlay regressions and toolbar activation |
+| `corepack pnpm verify:api` | **Five real local Worker HTTP checks passed:** malformed JSON 400, oversized body 413, forbidden field 400, excessive label 400, sensitive goal 422 | Actual runnable Worker; all fail before Gemini |
+| `corepack pnpm --filter @clickpilot/api smoke:gemini` | **Four REAL GEMINI cases passed** with configured `gemini-3.5-flash-lite`: guidance/observed target, answer, clarification and unsupported | Actual local Worker → Google API; synthetic controls/questions only; protocol/identity/result/target validation applied |
+| `git diff --check` | Passed | No provider calls |
+| Python inspection of production manifest/client files | Exact `activeTab`, `scripting`, `sidePanel` permission set; one loopback host; no static content scripts; fixed endpoint present; actual configured key, `GEMINI_API_KEY` and Google provider endpoint absent from client bundle | Only boolean/pass status printed; no secrets printed |
+
+Provider tests cover strict variants, legacy/extra/blank/oversized output, target filtering, malformed/blocked/truncated envelopes, byte bounds, missing config, kill switch, network failures, rate limits, timeout and cancellation. Session/browser tests cover text-only and guidance outcomes, safe literal hostile text, fresh independent payloads, one target refresh, trusted click acknowledgement, replacement/Stop/navigation/tab/panel-close races and recovery to Mock. No browser test contacts Gemini. The real smoke cases are four synthetic outcomes, **not** an accuracy benchmark or end-to-end manual Chrome approval.
+
+### Issues encountered and resolved
+
+- Offline installation could not access the existing package cache; the normal approved install restored existing packages. Initial checks failed until the shared link and direct use of the existing Zod package were installed. No new SDK/dependency family was introduced.
+- Zod's discriminated union emits `oneOf`; the provider schema uses a plain union of the same four strict schemas to emit supported `anyOf`, while runtime validation retains the discriminated union. The initial schema-shape test failure was fixed and all 55 API tests pass.
+- The first local Worker smoke returned a safe 502. A separate synthetic direct Google diagnostic confirmed key/model access. The Worker required `redirect: 'manual'` rather than browser-style `error`; non-2xx redirects are rejected without forwarding the key. Cloudflare's `enable_request_signal` flag was also enabled for disconnect cancellation. Four actual Worker-to-Gemini outcome calls then passed. Temporary diagnostics printed only fixed categories/statuses and were removed.
+- The first browser run passed 54 cases. Adding the activation guard exposed a harness startup race: CDP could trigger the action before the background listener registered. The helper now waits for `onClicked.hasListeners()`. The failing run was interrupted, three focused activation/assistant tests passed, and the final **55-case** full run passed. A final small serialization cleanup passes only explicit session/request IDs through the internal assistant boundary; unit/type/lint/build checks and the complete 55-case browser suite were rerun successfully afterward. These intermediate failures are not counted as successful checks.
+- Impeccable detector attempt exited 127 because engine 0.1.5 was unavailable in its permitted cache; no automated design-detector pass is claimed. An independent fresh-context visual reviewer inspected valid 360px, 260px and fixture/overlay captures and returned **ship** for the narrow addition, with no material fixes. The documenter confirmed incumbent colors/type/components were preserved and no new design documents/system changes were needed. Captures use mocked API output only and remain temporary artifacts under `/tmp/clickpilot-5b-*.png`.
+
+### Exact manual Chrome verification
+
+1. Keep your key/model in ignored `apps/api/.dev.vars` and `GUIDANCE_ENABLED=true`. From the repository root start `corepack pnpm dev:api` in one terminal; if the fixture is not already served, start `python3 -m http.server 4173 --directory tests/fixtures` in another. The production build is already prepared. At `chrome://extensions`, enable Developer mode and load/reload `apps/extension/.output/chrome-mv3`. Open `http://127.0.0.1:4173/guidance.html`, click ClickPilot's toolbar icon and select **AI assistant**. Before checking **Allow this panel…**, Ask must be disabled. Without toolbar activation, inspection must request activation.
+2. Read the disclosure and check consent. Ask **“Show me the Primary target button.”** Expect a short panel explanation, a correct highlight/arrow and a separate short tooltip, with **Clicks: 0** until you click. Scroll/resize to check alignment/invalidation and click-through. Click the target yourself: expect an explicitly unverified acknowledgement, cleanup and no automatic follow-up request.
+3. Ask **“Explain what a navigation menu is in general; no highlight needed.”** Expect a short useful answer and no old/new overlay. Ask **“Find Settings.”** Expect clarification between duplicate controls. Ask **“Tell me my account balance from this page.”** Expect an honest limitation. Resubmit **“Find Settings in Main navigation.”** as a fresh question; no prior question should be sent. Wording varies with Gemini; never accept invented page facts or completion claims.
+4. Using only fake data, inspect the extension service-worker DevTools Network request to port 8787. Expect protocol 2, current task, origin, IDs and eligible control labels; no path/query/hash, input values, geometry/viewport, screenshot, history or key. Inspecting synthetic upstream shapes is covered by unit tests. Hostile HTML/Markdown strings must stay literal; the deterministic browser tests verify no markup execution.
+5. Submit and immediately Stop/replace, use **Change route (SPA)**, switch tabs or close the actual side panel. Repeat for text requests and visual guidance. Expect no late reply/highlight and displayed text cleared after page changes. Unchecking consent must stop work. Cover/remove a target to check cleanup or one bounded refresh. Reload the fixture and click the toolbar again to recover.
+6. Stop the backend and ask: expect a connection error. Restart and Retry. Set `GUIDANCE_ENABLED=false` and restart: expect service disabled, never a fake answer; restore `true` afterward. Switch to **Mock guidance** with the backend stopped: the fixture tasks must still work. Timeout, quota, malformed output and delayed-response failures are tested deterministically; there is no need to exhaust real quota. Any stale reply, guessed target, unsafe text, blocked interaction, unexpected upload or automatic action is a verification failure.
+
+### Remaining limitations and stop gate
+
+- The user confirmed manual verification of milestone 5B. Headless tests separately opened panel HTML in a tab. No additional Brave or varied third-party-page coverage is inferred from that confirmation.
+- Only observed controls/context are available, not arbitrary page prose, field values, account state or screenshots. No conversation memory or multi-step verification exists. Privacy filtering is heuristic; only non-sensitive public/synthetic data should be used.
+- Local endpoint only. Google project quota/data policy applies; no free quota, durable spend limit or hosted authentication/abuse control is claimed. Already-accepted provider work can consume quota despite cancellation. Hosted operation needs separately approved controls.
+- The API test server is stopped after checks. The pre-existing fixture server at port 4173 remains available; it was reused without stopping another session's process.
+
+**STOP:** Milestone 5B is user-verified. Its branch commit/push is authorized below; do not begin milestone 6A, deploy or publish without explicit permission.
+
+
+## Milestone 5B verification and branch handoff — 22 October 2026
+
+The user stated: “great , it everything looks fine , i have manually verified , push the code to milestone-5B”. Milestone 5B is **VERIFIED**. This explicitly authorizes committing its relevant extension/API/shared implementation, tests, fixtures, dependency links/lockfile and documentation, then pushing branch `milestone-5B` to the configured origin, `https://github.com/anantjain-afk/ClickPilot.git`.
+
+This handoff updates verification/authorization documentation only; runtime implementation is unchanged from the recorded passing checks. The previous automated and real Gemini evidence remains applicable and was not rerun solely for this documentation update. Check the final diff and exclude ignored backend secrets, local variables, generated builds and temporary captures from the commit. No deployment, publication or milestone 6A is authorized.

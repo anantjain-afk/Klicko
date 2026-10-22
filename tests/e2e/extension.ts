@@ -1,4 +1,4 @@
-import { chromium, type Page } from '@playwright/test';
+import { chromium, expect, type Page } from '@playwright/test';
 import { resolve } from 'node:path';
 
 export async function launchExtension() {
@@ -9,6 +9,10 @@ export async function launchExtension() {
     args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`],
   });
   const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
+  // A worker target exists before its bundle finishes registering action handlers.
+  await expect.poll(() => worker.evaluate(() => (globalThis as unknown as {
+    chrome: { action: { onClicked: { hasListeners: () => boolean } } };
+  }).chrome.action.onClicked.hasListeners())).toBe(true);
   const extensionId = new URL(worker.url()).host;
   return { context, extensionId, worker };
 }

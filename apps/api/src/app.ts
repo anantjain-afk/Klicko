@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
+import { geminiReply, ProviderError, type GeminiEnv } from './gemini';
 import {
-  GuidanceRequestSchema, SelectionSchema, MAX_REQUEST_BYTES,
+  GuidanceRequestSchema, AssistantResultSchema, MAX_REQUEST_BYTES,
   validateGuidanceResponse, type ErrorCode,
 } from '@clickpilot/shared/guidance';
 import { containsSensitiveText, prepareProviderContext, type ProviderContext } from '@clickpilot/shared/privacy';
@@ -11,17 +12,21 @@ const MESSAGES: Record<ErrorCode, string> = {
   payload_too_large: 'The request body exceeds the 64 KiB limit.',
   unsupported_media_type: 'Send uncompressed application/json.',
   unsafe_context: 'This context cannot be used for guidance.',
-  provider_unavailable: 'No guidance provider is configured. Real AI integration requires milestone 5B.',
+  provider_unavailable: 'The local Gemini provider is not configured.',
   provider_error: 'The guidance provider could not respond.',
   invalid_provider_response: 'The guidance provider returned an invalid response.',
   not_found: 'This API route does not exist.',
   method_not_allowed: 'Use POST for this API route.',
   local_only: 'This API is restricted to local development.',
   internal_error: 'The request could not be processed.',
+  service_disabled: 'The local AI service is disabled.',
+  rate_limited: 'Gemini quota was reached. Wait before retrying.',
+  timeout: 'Gemini took too long to respond. Please retry.',
+  cancelled: 'The request was cancelled.',
 };
 
 function errorResponse(code: ErrorCode, status: number): Response {
-  return Response.json({ protocolVersion: 1, kind: 'error', error: { code, message: MESSAGES[code] } }, {
+  return Response.json({ protocolVersion: 2, kind: 'error', error: { code, message: MESSAGES[code] } }, {
     status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' },
   });
 }
@@ -54,10 +59,9 @@ async function readJson(request: Request): Promise<{ value: unknown } | { respon
   } finally { reader.releaseLock(); }
 }
 
-// Only tests inject deterministic replies. The runnable entrypoint supplies no
-// provider, so valid requests return an explicit 503 rather than fake guidance.
-export function createApp(provider?: (context: ProviderContext) => Promise<unknown>) {
-  const app = new Hono();
+// Tests may inject deterministic replies; the runnable path uses backend-only secrets.
+export function createApp(provider?: (context: ProviderContext, signal: AbortSignal) => Promise<unknown>) {
+  const app = new Hono<{ Bindings: GeminiEnv }>();
   app.use('*', async (c, next) => {
     if (!['127.0.0.1', 'localhost', '[::1]'].includes(new URL(c.req.url).hostname)) return errorResponse('local_only', 403);
     c.header('Cache-Control', 'no-store');
@@ -76,17 +80,21 @@ export function createApp(provider?: (context: ProviderContext) => Promise<unkno
     if (!parsed.success) return errorResponse('invalid_request', 400);
     const context = prepareProviderContext(parsed.data);
     if (!context) return errorResponse('unsafe_context', 422);
-    if (!provider) return errorResponse('provider_unavailable', 503);
 
     let output: unknown;
-    try { output = await provider(context); } catch { return errorResponse('provider_error', 502); }
-    const selection = SelectionSchema.safeParse(output);
+    try { output = await (provider ? provider(context, c.req.raw.signal) : geminiReply(context, c.req.raw.signal, c.env ?? {})); }
+    catch (error) {
+      return error instanceof ProviderError ? errorResponse(error.code, error.status) : errorResponse('provider_error', 502);
+    }
+    if (c.req.raw.signal.aborted) return errorResponse('cancelled', 499);
+    const selection = AssistantResultSchema.safeParse(output);
     if (!selection.success) return errorResponse('invalid_provider_response', 502);
-    const text = selection.data.kind === 'highlight' ? selection.data.instruction
-      : selection.data.kind === 'ask_clarification' ? selection.data.question : selection.data.message;
-    if (containsSensitiveText(text)) return errorResponse('invalid_provider_response', 502);
+    if (containsSensitiveText(selection.data.message)
+      || (selection.data.kind === 'guidance' && containsSensitiveText(selection.data.instruction))) {
+      return errorResponse('invalid_provider_response', 502);
+    }
     const response = validateGuidanceResponse({
-      protocolVersion: 1,
+      protocolVersion: 2,
       sessionId: parsed.data.sessionId,
       requestId: parsed.data.requestId,
       pageKey: parsed.data.page.pageKey,

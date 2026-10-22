@@ -43,3 +43,18 @@ test('toolbar activation lets the panel inspect the local fixture', async () => 
     await context.close();
   }
 });
+
+test('the loopback API host grant does not activate page inspection without the toolbar', async () => {
+  const { context, extensionId } = await launchExtension();
+  try {
+    const page = await context.newPage();
+    await page.goto('http://127.0.0.1:4173');
+    const panel = await context.newPage();
+    await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+    await panel.getByRole('button', { name: 'Manual highlights', exact: true }).click();
+    await page.bringToFront();
+    await panel.getByRole('button', { name: 'Inspect this page' }).click();
+    await expect(panel.getByRole('alert')).toContainText('toolbar icon');
+    await expect(panel.getByRole('heading', { name: /Visible controls/ })).toHaveCount(0);
+  } finally { await context.close(); }
+});

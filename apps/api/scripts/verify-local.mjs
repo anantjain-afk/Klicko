@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import fixture from '../tests/fixtures/valid-request.json' with { type: 'json' };
 
+// Negative contract checks never invoke Gemini, even when credentials are present.
 const endpoint = 'http://127.0.0.1:8787/v1/guidance/next';
 const json = { 'Content-Type': 'application/json' };
 const cases = [
-  ['valid fixture', JSON.stringify(fixture), 503, 'provider_unavailable'],
   ['malformed JSON', '{', 400, 'invalid_json'],
   ['oversized body', JSON.stringify({ value: 'x'.repeat(70_000) }), 413, 'payload_too_large'],
   ['forbidden field', JSON.stringify({ ...fixture, screenshot: 'FORBIDDEN-FAKE-MARKER' }), 400, 'invalid_request'],

@@ -21,6 +21,7 @@ export default defineContentScript({
     let observedUrl = location.href;
     let registry = new Map<string, Element>();
     let snapshotId: string | null = null;
+    let currentSnapshot: PageSnapshot | null = null;
     let expiry: ReturnType<typeof setTimeout> | undefined;
     let navigationCheck: ReturnType<typeof setInterval> | undefined;
     let removeOverlay: (() => void) | null = null;
@@ -42,6 +43,7 @@ export default defineContentScript({
       clearOverlay();
       registry.clear();
       snapshotId = null;
+      currentSnapshot = null;
       if (expiry) clearTimeout(expiry);
       if (navigationCheck) clearInterval(navigationCheck);
       expiry = undefined;
@@ -56,7 +58,7 @@ export default defineContentScript({
       pageKey = crypto.randomUUID();
     }
 
-    function handleMessage(message: unknown, sender: { id?: string }, sendResponse: (response: PageSnapshot | OverlayResponse | { ok: true }) => void) {
+    function handleMessage(message: unknown, sender: { id?: string }, sendResponse: (response: PageSnapshot | OverlayResponse | { ok: boolean }) => void) {
       if (!ctx.isValid || sender.id !== browser.runtime.id || !isContentRequest(message)) return;
       if (message.type === 'CLEAR_ELEMENTS') {
         if (message.snapshotId === undefined || message.snapshotId === snapshotId) clear();
@@ -65,6 +67,11 @@ export default defineContentScript({
       }
 
       checkNavigation();
+      if (message.type === 'GET_SNAPSHOT') {
+        sendResponse(message.pageKey === pageKey && message.snapshotId === snapshotId && currentSnapshot
+          ? currentSnapshot : { ok: false });
+        return;
+      }
       if (message.type === 'SHOW_OVERLAY') {
         const target = registry.get(message.targetId);
         const isCurrent = () => ctx.isValid && observedUrl === location.href
@@ -106,6 +113,7 @@ export default defineContentScript({
         elements: collected.elements,
         mockFixture: isMockFixtureUrl(location.href),
       };
+      currentSnapshot = snapshot;
       sendResponse(snapshot);
     }
 

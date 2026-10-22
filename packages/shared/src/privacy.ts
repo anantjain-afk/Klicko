@@ -18,6 +18,15 @@ function cleanText(text: string): string {
   return text.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+export function eligibleElements(elements: { id: string; role: string; name: string; context: string; disabled: boolean }[]): ProviderContext['elements'] {
+  return elements.flatMap((element) => {
+    const name = cleanText(element.name);
+    const context = cleanText(element.context);
+    return element.disabled || !name || containsSensitiveText(name) || containsSensitiveText(context)
+      ? [] : [{ id: element.id, role: element.role, name, context }];
+  });
+}
+
 export function prepareProviderContext(request: GuidanceRequest): ProviderContext | null {
   const url = new URL(request.page.url);
   let path: string;
@@ -26,13 +35,7 @@ export function prepareProviderContext(request: GuidanceRequest): ProviderContex
     || /(?:^|\/)(?:login|signin|sign-in|auth|oauth|password|reset-password|billing|payments?|checkout|bank|medical|health)(?:\/|$)/i.test(path)
     || containsSensitiveText(request.userGoal)) return null;
 
-  const elements: ProviderContext['elements'] = [];
-  for (const element of request.elements) {
-    const name = cleanText(element.name);
-    const context = cleanText(element.context);
-    if (element.disabled || !name || containsSensitiveText(name) || containsSensitiveText(context)) continue;
-    elements.push({ id: element.id, role: element.role, name, context });
-  }
+  const elements = eligibleElements(request.elements);
   const userGoal = cleanText(request.userGoal);
   if (!userGoal) return null;
   return { userGoal, page: { origin: url.origin }, elements };

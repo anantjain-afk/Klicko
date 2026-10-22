@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { browser, type Browser } from 'wxt/browser';
-import { createMockSession, type GuidanceState } from './session';
+import { useRef, useState, type FormEvent } from 'react';
+import type { GuidanceState } from './session';
+import { useGuidanceSession } from './useGuidanceSession';
 import type { MockScenario } from './mock';
 
 function statusText(state: GuidanceState): string {
@@ -17,65 +17,8 @@ function statusText(state: GuidanceState): string {
 export function MockGuidance() {
   const [question, setQuestion] = useState('');
   const [scenario, setScenario] = useState<MockScenario>('normal');
-  const [state, setState] = useState<GuidanceState>({ kind: 'idle' });
-  const [connected, setConnected] = useState(true);
-  const controller = useRef<ReturnType<typeof createMockSession> | null>(null);
+  const { state, connected, controller, connection } = useGuidanceSession(false);
   const previousTask = useRef<{ question: string; scenario: MockScenario } | null>(null);
-  const connection = useRef<Browser.runtime.Port | null>(null);
-
-  useEffect(() => {
-    const port = browser.runtime.connect({ name: 'clickpilot-panel' });
-    let trackedTabId: number | undefined;
-    connection.current = port;
-    const session = createMockSession({
-      inspect: (requestId) => browser.runtime.sendMessage({ type: 'INSPECT_ACTIVE_TAB', requestId }),
-      track: (tabId) => { trackedTabId = tabId; port.postMessage({ type: 'TRACK_PAGE', tabId }); },
-      highlight: (tabId, snapshot, targetId, instruction, guidance) => browser.runtime.sendMessage({
-        type: 'HIGHLIGHT_ELEMENT', tabId, pageKey: snapshot.pageKey, snapshotId: snapshot.snapshotId,
-        targetId, instruction, guidance,
-      }),
-      clear: (tabId, snapshotId) => browser.runtime.sendMessage({ type: 'STOP_INSPECTION', tabId, snapshotId }),
-    }, setState);
-    controller.current = session;
-
-    const onDisconnect = () => {
-      connection.current = null;
-      setConnected(false);
-      session.pause('The page connection closed. Reopen the panel to continue.');
-    };
-    const onMessage = (message: unknown, sender: Browser.runtime.MessageSender) => {
-      if (sender.id !== browser.runtime.id || sender.tab?.id === undefined || sender.frameId !== 0) return;
-      session.onPageEvent(message, sender.tab.id);
-    };
-    const onTabActivated = () => {
-      if (session.isActive() || trackedTabId !== undefined) {
-        trackedTabId = undefined;
-        session.pause('Tab changed. Activate the fixture tab with the toolbar icon, then Retry.');
-      }
-    };
-    const onTabUpdated = (tabId: number, change: { url?: string; status?: string }) => {
-      if (tabId === trackedTabId && (change.url || change.status === 'loading')) {
-        session.pause('Page changed. Return to the fixture and Retry.');
-      }
-    };
-    const onPageHide = () => { session.dispose(); port.disconnect(); };
-    port.onDisconnect.addListener(onDisconnect);
-    browser.runtime.onMessage.addListener(onMessage);
-    browser.tabs.onActivated.addListener(onTabActivated);
-    browser.tabs.onUpdated.addListener(onTabUpdated);
-    window.addEventListener('pagehide', onPageHide);
-    return () => {
-      session.dispose();
-      controller.current = null;
-      connection.current = null;
-      port.onDisconnect.removeListener(onDisconnect);
-      port.disconnect();
-      browser.runtime.onMessage.removeListener(onMessage);
-      browser.tabs.onActivated.removeListener(onTabActivated);
-      browser.tabs.onUpdated.removeListener(onTabUpdated);
-      window.removeEventListener('pagehide', onPageHide);
-    };
-  }, []);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

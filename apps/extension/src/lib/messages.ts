@@ -36,6 +36,7 @@ export type PanelRequest =
 
 export type ContentRequest =
   | { type: 'COLLECT_ELEMENTS' }
+  | { type: 'GET_SNAPSHOT'; pageKey: string; snapshotId: string }
   | { type: 'CLEAR_ELEMENTS'; snapshotId?: string }
   | ({ type: 'SHOW_OVERLAY' } & OverlayTarget);
 
@@ -95,6 +96,7 @@ export function isPanelRequest(value: unknown): value is PanelRequest {
 
 export function isContentRequest(value: unknown): value is ContentRequest {
   return isRecord(value) && (value.type === 'COLLECT_ELEMENTS'
+    || (value.type === 'GET_SNAPSHOT' && isPageIdentity(value))
     || (value.type === 'CLEAR_ELEMENTS' && hasOptionalSnapshotId(value))
     || (value.type === 'SHOW_OVERLAY' && isOverlayTarget(value)));
 }

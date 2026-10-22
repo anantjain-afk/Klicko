@@ -1,6 +1,6 @@
 # ClickPilot implementation plan
 
-Status: Milestone 1 verified; milestone 2's separate privacy verification remains unconfirmed. Milestone 3 is verified in Chrome. Milestone 4 is implemented with manual verification pending. The user explicitly approved milestone 5A on 21 October 2026; the local contract is implemented and was verified by the user on 22 October 2026. Real Gemini integration (5B) and later milestones remain proposed.
+Status: Milestone 1 verified; milestone 2's separate privacy verification remains unconfirmed. Milestone 3 is verified in Chrome. Milestone 4 is implemented with manual verification pending. The user explicitly approved milestone 5A on 21 October 2026; the local contract is implemented and was verified by the user on 22 October 2026. Milestone 5B's revised plan was explicitly approved on 22 October 2026; implementation, automated checks and user manual verification are complete. Milestone 5B is VERIFIED; the user authorized its commit/push to milestone-5B. Later milestones remain unapproved.
 Prepared: 21 October 2026.
 
 ## Sources and architecture review
@@ -134,26 +134,71 @@ For every Chrome check: rebuild and reload the unpacked extension first. Check t
 
 **Gate:** User verifies the local contract and separately approves real Gemini integration.
 
-## Milestone 5B — Real Gemini, one grounded step
+## Milestone 5B — Conversational Gemini replies with single-step visual guidance
 
-**Goal:** Get a validated model selection from a permitted DOM snapshot and highlight it.
+**Status:** VERIFIED, 22 October 2026. Scoped implementation, automated checks and four real synthetic Gemini smoke cases are complete. The user confirmed manual verification and authorized committing/pushing the relevant code to `milestone-5B`. Deployment and milestone 6A remain unapproved.
 
-**Likely files:** Gemini provider module, backend security/configuration, background request routing, panel disclosure/error states, shared contracts, tests, setup docs, progress.
+**Goal:** Respond conversationally to one independent request: explain and highlight one grounded action, answer without highlighting, or ask for clarification/explain a limitation. Do not add multi-step planning, conversation memory, or autonomous browser actions.
 
-**Scope:** Verify current official Gemini/Cloudflare contracts, model availability, account quotas, and data policies before implementation. Use direct REST unless evidence justifies a dependency. Keep secrets solely in backend environment configuration excluded from source control. Disclose the bounded page context and user task sent to the provider; block sensitive contexts by default and conservatively omit unnecessary text. Add only the exact backend origin permission after explaining its purpose. Use a local Worker initially; HTTPS is required for hosted service use.
+**Approved result contract:** Replace `SelectionSchema` with a strict Zod discriminated union named `AssistantResultSchema`. There are three user-facing outcome categories; clarification and unsupported have separate literals for straightforward validation and UI branching.
 
-Add timeout/cancellation, response validation at both trust boundaries, stale response rejection, one bounded refresh, and honest clarification/unsupported/error states. Implement request-size controls and a kill switch; document enforceable quota/spend and abuse controls before any hosted rollout. Do not treat CORS, an extension ID, or in-memory counters as durable access control or budget protection. If effective hosted limits require additional infrastructure, stop at local operation and seek a separately scoped decision.
+| Category | Exact result fields | Display |
+|---|---|---|
+| Guidance | `kind: guidance`, `message`, `targetId`, `instruction` | Conversational `message` in the side panel; one validated highlight/arrow with separate `instruction` tooltip |
+| Answer | `kind: answer`, `message` | Side-panel answer; no overlay |
+| Clarification / Unsupported | `kind: clarification` or `kind: unsupported`, `message` | Specific question or honest limitation in the side panel; no overlay |
 
-**Acceptance and automated checks:** Deterministic tests cover success, malicious output, nonexistent targets, timeout, rate limit, network failure, cancellation, and kill switch. Inspect built client bundles for secrets and verify omitted sensitive fixture markers. Live smoke results are recorded separately from mocked tests. No credentials available means live integration remains unverified, not passed.
+- Every `message`: trimmed, nonempty plain text, maximum **600 characters**. Guidance `instruction`: trimmed, nonempty plain text, maximum **160 characters**. Prompt for short replies, typically one to three sentences; reject overlong output rather than silently truncating it.
+- Only guidance may include a target or instruction. Reject unknown fields on every variant, including targets on answers, selectors, scripts, executable commands, action arrays and step plans. Validate the ephemeral ID against the exact privacy-filtered inventory supplied to Gemini and the current local registry; reject invented, disabled or filtered-out targets.
+- Retain the outer envelope (`protocolVersion`, `sessionId`, `requestId`, `pageKey`, `snapshotId`, `result`). The server supplies identity from the validated request; the model supplies only `result`. All variants must match the active tab/document/snapshot/request before display.
+- Make the breaking HTTP contract change explicit: move request, success and error envelopes to **protocol version 2** together in approved 5B implementation. Update fixtures and clients together and reject version mismatches; no parallel legacy compatibility layer. Browser-internal observation/overlay messages remain separate.
+- Remove model `complete` and `expectedOutcome` results/fields from this contract. An answer does not establish task completion; observed outcomes and progression remain milestone 6A work. Keep click acknowledgement explicitly unverified. Operational errors remain separate fixed API errors, never model-generated answers or unsupported-page replies.
 
-**Manual Chrome verification:**
+**Behavior and grounding:** For a preferences question, guidance could say “You can open your preferences from Settings.” in the panel and “Click Settings.” beside an actually observed Settings target. An answer can explain the available controls without highlighting. Duplicate controls should prompt clarification; missing information should produce an honest limitation. These are design examples, not hard-coded AI successes.
 
-1. Configure a backend-only development secret and activate the fixture. Review the data disclosure and submit a task. Expect an actual provider response grounded in the observed inventory, a matching highlight, and no automatic action.
-2. Inspect outbound payloads using fake fixture data. Expect bounded allowed context, no field values, sensitive URL components, screenshot, or client-side API key.
-3. Exercise documented failure fixtures and disable the local backend. Expect clear Retry/Stop states, no fabricated success, and no stale result after navigation.
-4. Enable the backend kill switch. Expect requests to stop before calling Gemini.
+Use only the current request and permitted sanitized context. General explanations must be clearly distinguished from current-page facts; never invent unseen page content, account state, field values or successful actions. Do not expand extraction to arbitrary prose, read inputs, browse other pages or add screenshots to make answers possible. If current context is insufficient, clarify or explain the limitation.
 
-**Gate:** User verifies real single-step guidance. Deployment/public access is a separate approval, not part of this gate.
+**Single-request flow:**
+
+1. A user submission cancels the previous run and observes fresh context. Show at most the current question and reply; send no prior turns, transcript or summaries. Each request is standalone. A clarification is answered by submitting a new self-contained request; Retry may repeat the current task without adding conversational context.
+2. Validate provider output with shared Zod schemas in the backend and validate the envelope/result again in the extension. Guidance also passes the existing content-script checks for live identity, connectivity, visibility, coverage, enabled state and geometry before either its narrative or decoration is presented as valid. Permit at most one target refresh, then pause honestly.
+3. Answer/clarification/unsupported clears previous decoration and click listeners, displays plain text, and never calls the overlay renderer. Use ordinary React text children and tooltip `textContent`; HTML/Markdown-looking strings stay literal. No injected markup, Markdown renderer, automatic links or executable interpretation.
+4. Apply timeout, response-size bounds, Stop/cancellation and stale-result rejection to every variant. New requests, navigation, tab changes, relevant snapshot invalidation and panel disconnection must prevent stale answers as well as stale overlays. A user click may acknowledge an action but must never trigger an automatic next step or model request.
+
+**Files/contracts expected to change after approval:**
+
+| File or area | Scoped change |
+|---|---|
+| `packages/shared/src/guidance.ts` | New result union and text bounds; protocol 2 envelope/types; grounding checks apply only to guidance targets |
+| `packages/shared/src/privacy.ts` | Preserve minimization/sensitive-context rules; filter every variant's message and guidance instruction |
+| New `apps/api/src/gemini.ts`; existing `src/app.ts`, `src/index.ts`, `wrangler.jsonc` | Direct REST request/prompt aligned with the union; backend-only secrets, bounded responses, validation, cancellation/timeouts, safe errors and kill switch |
+| `apps/extension/src/lib/messages.ts`, `entrypoints/background.ts` | Explicit live request/cancel/response routing, validated replies and tab identity checks; background remains a router, not a second coordinator |
+| `apps/extension/src/features/session/session.ts`, focused `AssistantPanel.tsx`, side-panel entrypoint/style | Reuse current cancellation guards and branch on the four result literals; render the current exchange, disclosure, Stop/Retry; preserve labelled Mock mode and existing visual design |
+| Extension `package.json`, `wxt.config.ts`, lockfile | Link the existing shared Zod package; explain the minimum browser-supported local API host permission before adding it; enforce the configured exact API URL in code |
+| Shared/API/unit/browser tests, fixtures, local verification script, setup docs and progress | Migrate contract examples and verify every outcome, error, privacy and lifecycle behavior |
+
+Reuse the observer registry and existing overlay renderer; a separate panel message does not require rewriting them. No new agent/provider framework, SDK, state library, chat-history system, database, queue, authentication or Markdown dependency is planned. Explain any necessary dependency/architecture change before adding it.
+
+**Privacy/security/runtime requirements retained:** Verify current official Gemini/Cloudflare contracts, structured-output support, model availability, quotas and data policies during approved implementation. Use direct REST unless evidence justifies a dependency. Keep secrets solely in excluded backend configuration. Disclose and minimize task/context before it leaves the extension; filter again on the backend. Preserve sensitive-context blocking, request/response bounds, no body/secret logging, safe errors, timeout/abort propagation, rate-limit/network errors, one-refresh limit and a kill switch. Missing credentials must yield provider unavailable, not fake AI success. Start with the local Worker; HTTPS is required for any later hosted use.
+
+Deployment and effective quota/spend/abuse controls remain separate approval work. Do not treat CORS, extension IDs or in-memory counters as durable authentication/budget protection. If hosted controls need additional infrastructure, stop at local operation and seek a separately scoped decision.
+
+**Acceptance and automated checks:**
+
+- Test all four strict variants, blank/missing/oversized text, forbidden target/instruction fields on text-only replies, old protocol/results (`highlight`, `ask_clarification`, `complete`, `expectedOutcome`), unknown/filtered/disabled targets, stale identity, arbitrary fields and plan/command injection. Preserve private-marker omission and safe-error tests.
+- Browser tests cover panel message plus exact-target tooltip; answer/clarification/unsupported without overlays; clearing old decoration; hostile strings rendered literally; Stop/new-request/navigation/tab-change/panel-close races for text and guidance; no automatic actions or follow-up requests. Keep the existing mock/overlay regression suite.
+- Deterministic provider tests cover valid replies, malicious output, missing targets, timeout, rate limit, network failure, cancellation and kill switch. Inspect outbound synthetic payloads and built client bundles for private markers/secrets. Test both backend and client validation.
+- Run typecheck, lint, unit/API tests, extension/Worker builds, browser tests and updated local API checks; report exact commands/results. Record real Gemini smoke tests separately. Missing credentials mean live integration is unverified, not passed.
+
+**Manual Chrome verification after implementation approval:**
+
+1. Configure a backend-only secret, review the disclosure and submit a fixture question needing one action. Expect a short panel message, correct highlight and separate short tooltip, with no automatic action.
+2. Submit an answerable question needing no highlight. Expect a useful panel answer and no old/new overlay or task-completion claim.
+3. Submit ambiguous and insufficient-context requests. Expect a specific clarification or honest unsupported explanation, no guessed target. Resubmit clarification as a standalone request; no history should be sent.
+4. Inspect fake-data payloads and hostile-text fixtures. Expect bounded context and literal text, no sensitive values/URL components/screenshots/client key, and no executed HTML or model-generated commands/selectors.
+5. Stop/replace delayed text and guidance; navigate, switch tabs or close the panel. Expect stale text/overlays rejected, at most one invalid-target refresh and no automatic next step after a click. Disable the backend and test invalid output/timeouts/rate limits/kill switch; expect honest errors and working labelled Mock mode.
+
+**Gate:** Obtain approval for this revised plan before 5B code, schemas, dependencies, permissions or secret setup. After implementation, stop for user verification of all outcomes. Deployment/public access and milestone 6A require separate approval.
 
 ## Milestone 6A — Multi-step outcome verification
 
@@ -230,6 +275,6 @@ Add timeout/cancellation, response validation at both trust boundaries, stale re
 
 **Gate:** User approves verified release preparation. Commit, push, deployment, store submission, publication, and production changes still require explicit permission.
 
-## Recommended next approval
+## Current approval gate
 
-The user explicitly authorized milestone 5A with “ok , now continue with milestone 5A” on 21 October 2026. The user confirmed verification on 22 October 2026; milestone 5A is VERIFIED. The user authorized committing and pushing its relevant changes to `milestone-5A`. The extension remains in local Mock mode. Real Gemini integration requires separate milestone 5B approval. No merge, deployment, publication, or milestone 5B work is authorized.
+The revised milestone 5B plan was explicitly approved on 22 October 2026. Its single-step conversational scope is implemented and manually verified by the user. Actual checks and real Gemini smoke calls are recorded separately in PROGRESS.md. The user authorized committing/pushing its relevant code to `milestone-5B`. Milestone 6A and deployment remain unapproved.

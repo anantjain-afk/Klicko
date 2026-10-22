@@ -305,3 +305,9 @@ summary { color: #315c43; font-weight: 650; cursor: pointer; }
 .mock-scenarios label { display: block; margin-top: 12px; }
 .mock-scenarios select { margin-top: 8px; font-size: 12px; }
 .mock-scenarios { margin-bottom: 24px; }
+
+.assistant-consent { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; line-height: 1.5; color: #526056; }
+.assistant-consent input { flex: 0 0 auto; margin-top: 3px; accent-color: #315c43; }
+.assistant-consent input:focus-visible { outline: 3px solid #8dad98; outline-offset: 3px; }
+.assistant-question { margin-bottom: 12px; font-size: 12px; line-height: 1.5; color: #526056; overflow-wrap: anywhere; }
+.mode-switch { flex-wrap: wrap; column-gap: 16px; row-gap: 0; }

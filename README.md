@@ -145,11 +145,15 @@ The unit checks run with `corepack pnpm test`. To run the Playwright checks, fir
 
 Development uses `AGENTS.md` for coding guidelines, `docs/clickpilot-production-architecture.md` for system design, `PLAN.md` for milestones, and `PROGRESS.md` for verification status.
 
-### Local API (milestone 5A)
+### Local Gemini assistant (milestone 5B)
 
-Run `corepack pnpm dev:api` to start the local Worker at `http://127.0.0.1:8787`. In another terminal, run `corepack pnpm verify:api` for six synthetic HTTP checks. Valid requests return **503 provider_unavailable**; no AI provider is configured. The extension continues to use its local Mock guidance and makes no backend requests. No key, login, deployment, or extra extension permission is needed.
+The **AI assistant** mode sends one independent question and filtered visible controls through a local backend to Gemini after explicit panel consent. It can explain one highlighted action, answer in text, or ask a clarification/explain missing context. It reuses existing observation, overlay and session guards; it never acts or follows up automatically. **Mock guidance** remains a separate local mode.
 
-The new `apps/api` workspace uses Hono for routing and the `packages/shared` Zod schemas for bounded input/output validation, privacy filtering, and target membership checks. Root typecheck/lint/test/build commands now include these workspaces. The API build uses Wrangler's explicit `--dry-run` flag and does not deploy. See [local API setup and contract](docs/local-api.md) for the request fixture, curl command, validation limits, expected errors, and known privacy limitations.
+Configure the ignored `apps/api/.dev.vars` with backend-only `GEMINI_API_KEY`, `GEMINI_MODEL` and `GUIDANCE_ENABLED=true`, then run `corepack pnpm dev:api`. The suggested initial model is `gemini-3.5-flash-lite`. Restart after changing configuration. Build/reload the extension, activate the fixture with the toolbar and choose AI assistant. See [local setup, protocol 2 contract and exact Chrome verification steps](docs/local-api.md).
+
+`corepack pnpm verify:api` runs five negative local HTTP checks without Gemini. `corepack pnpm --filter @clickpilot/api smoke:gemini` intentionally runs four real synthetic Gemini calls and may incur usage charges. Unit and browser tests mock provider responses and do not measure model accuracy. Stop the real Worker before the browser suite, which uses port 8787 for its mock API.
+
+The extension requests a loopback API host permission, enforces one fixed local endpoint, and still requires toolbar activation for observation. The backend uses Hono and existing Zod validation, direct REST, bounded output, abort/timeout handling, safe errors and a configuration kill switch. Secrets stay out of client bundles. Worker builds use `--dry-run`; nothing is deployed. Hosting and milestone 6A require separate approval.
 
 ## Quality goals
 

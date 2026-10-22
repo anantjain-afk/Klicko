@@ -1,3 +1,5 @@
+import { validateGuidanceResponse } from '@clickpilot/shared/guidance';
+import { eligibleElements } from '@clickpilot/shared/privacy';
 import { isGuidanceClick, isInspectionResponse, isOverlayResponse, isPageInvalidation,
   type GuidanceIdentity, type PageSnapshot } from '../../lib/messages';
 import { isMockSelection, mockSelection, type MockScenario } from './mock';
@@ -5,10 +7,11 @@ import { isMockSelection, mockSelection, type MockScenario } from './mock';
 export type GuidanceState =
   | { kind: 'idle' }
   | { kind: 'observing' | 'selecting' | 'highlighting'; attempt: number }
-  | { kind: 'waiting'; instruction: string }
-  | { kind: 'clicked' | 'clarification' | 'unsupported' | 'paused' | 'error' | 'stopped'; message: string };
+  | { kind: 'waiting'; instruction: string; message?: string }
+  | { kind: 'answer' | 'clicked' | 'clarification' | 'unsupported' | 'paused' | 'error' | 'stopped'; message: string };
 
 export interface SessionClient {
+  ask?: (tabId: number, snapshot: PageSnapshot, task: string, identity: GuidanceIdentity, signal: AbortSignal) => Promise<unknown>;
   inspect: (requestId: number) => Promise<unknown>;
   track: (tabId: number) => void;
   highlight: (tabId: number, snapshot: PageSnapshot, targetId: string, instruction: string, identity: GuidanceIdentity) => Promise<unknown>;
@@ -31,7 +34,7 @@ const INSPECTION_ERRORS = {
 
 // The panel owns one active run. Async replies can change state only while
 // their run is current; clearing an old snapshot cannot erase a newer one.
-export function createMockSession(client: SessionClient, onChange: (state: GuidanceState) => void) {
+function createSession(client: SessionClient, onChange: (state: GuidanceState) => void, live: boolean) {
   let state: GuidanceState = { kind: 'idle' };
   let active: ActiveRun | null = null;
   let requestNumber = 0;
@@ -48,7 +51,7 @@ export function createMockSession(client: SessionClient, onChange: (state: Guida
   }
   function pause(message: string) { cancel(); transition({ kind: 'paused', message }); }
 
-  async function start(task: string, scenario: MockScenario) {
+  async function start(task: string, scenario: MockScenario = 'normal') {
     cancel();
     const run: ActiveRun = { sessionId: crypto.randomUUID(), requestId: ++requestNumber, abort: new AbortController() };
     active = run;
@@ -73,13 +76,32 @@ export function createMockSession(client: SessionClient, onChange: (state: Guida
         run.snapshot = response.snapshot;
         client.track(response.tabId);
         transition({ kind: 'selecting', attempt });
-        const selection: unknown = await mockSelection(response.snapshot, task, scenario, attempt, run.abort.signal);
-        if (active !== run) return;
-        if (!isMockSelection(selection)) {
-          cancel(); transition({ kind: 'error', message: 'The mock returned invalid output. Nothing was highlighted. Retry with the Normal scenario.' }); return;
-        }
-        if (selection.kind !== 'highlight') {
-          cancel(); transition({ kind: selection.kind === 'missing' ? 'paused' : selection.kind, message: selection.message }); return;
+        let selection: { kind: 'highlight'; targetId: string; instruction: string; message?: string };
+        if (live) {
+          if (!client.ask) throw new Error('The assistant connection is unavailable.');
+          const identity = { sessionId: run.sessionId, requestId: run.requestId };
+          const value = await client.ask(response.tabId, response.snapshot, task, identity, run.abort.signal);
+          if (active !== run) return;
+          const reply = validateGuidanceResponse(value, { ...identity, page: response.snapshot },
+            eligibleElements(response.snapshot.elements).map((element) => element.id));
+          if (!reply) {
+            cancel(); transition({ kind: 'error', message: 'The AI reply was invalid or stale. Nothing was displayed.' }); return;
+          }
+          if (reply.result.kind !== 'guidance') {
+            // Retain snapshot tracking so navigation also invalidates text-only replies.
+            transition({ kind: reply.result.kind, message: reply.result.message }); return;
+          }
+          selection = { ...reply.result, kind: 'highlight' };
+        } else {
+          const mock: unknown = await mockSelection(response.snapshot, task, scenario, attempt, run.abort.signal);
+          if (active !== run) return;
+          if (!isMockSelection(mock)) {
+            cancel(); transition({ kind: 'error', message: 'The mock returned invalid output. Nothing was highlighted. Retry with the Normal scenario.' }); return;
+          }
+          if (mock.kind !== 'highlight') {
+            cancel(); transition({ kind: mock.kind === 'missing' ? 'paused' : mock.kind, message: mock.message }); return;
+          }
+          selection = mock;
         }
         const member = response.snapshot.elements.some((element) => element.id === selection.targetId && !element.disabled);
         if (member) {
@@ -89,14 +111,17 @@ export function createMockSession(client: SessionClient, onChange: (state: Guida
             { sessionId: run.sessionId, requestId: run.requestId });
           if (active !== run) return;
           if (!isOverlayResponse(result)) { pause('The highlight response was invalid. Retry the request.'); return; }
-          if (result.ok) { transition({ kind: 'waiting', instruction: selection.instruction }); return; }
+          if (result.ok) { transition({ kind: 'waiting', instruction: selection.instruction, ...(selection.message ? { message: selection.message } : {}) }); return; }
         }
         await client.clear(response.tabId, response.snapshot.snapshotId);
         if (active !== run) return;
       }
       pause('The target stayed unavailable after one refresh. Restore the fixture and Retry.');
-    } catch {
-      if (active === run) pause('Could not continue guidance. Check the page connection and Retry.');
+    } catch (error) {
+      if (active === run) {
+        cancel(); transition({ kind: 'error', message: live && error instanceof Error && error.message.length <= 240
+          ? error.message : 'Could not continue guidance. Check the page connection and Retry.' });
+      }
     }
   }
 
@@ -114,7 +139,7 @@ export function createMockSession(client: SessionClient, onChange: (state: Guida
     if (message.sessionId !== run.sessionId || message.requestId !== run.requestId) return;
     if (state.kind !== 'waiting' && state.kind !== 'highlighting') return;
     cancel();
-    transition({ kind: 'clicked', message: 'Click observed. This demo has not verified that the task is complete.' });
+    transition({ kind: 'clicked', message: 'Click observed. ClickPilot has not verified that the task is complete.' });
   }
 
   return {
@@ -123,4 +148,12 @@ export function createMockSession(client: SessionClient, onChange: (state: Guida
     dispose: cancel,
     isActive: () => active !== null,
   };
+}
+
+export function createMockSession(client: SessionClient, onChange: (state: GuidanceState) => void) {
+  return createSession(client, onChange, false);
+}
+
+export function createAssistantSession(client: SessionClient, onChange: (state: GuidanceState) => void) {
+  return createSession(client, onChange, true);
 }
