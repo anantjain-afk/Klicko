@@ -12,7 +12,8 @@ Milestone 2: AWAITING USER VERIFICATION.
 Milestone 3: VERIFIED by the user in Chrome on 21 October 2026.
 Milestone 4: AWAITING USER VERIFICATION — explicitly approved by the user on 21 October 2026.
 Milestone 5A: VERIFIED by the user on 22 October 2026.
-Milestone 5B: VERIFIED by the user on 22 October 2026. Relevant commit/push to `milestone-5B` is authorized; milestone 6A and deployment remain unapproved.
+Milestone 5B: VERIFIED by the user on 22 October 2026. Its relevant branch handoff was authorized. Milestone 6A was subsequently approved and implemented as recorded below; 6B and deployment remain unapproved.
+Milestone 6A: implementation approved on 22 October 2026 after the continuation clarification. Implemented; AWAITING USER VERIFICATION in Chrome. Final evidence and limitations are recorded below.
 
 The user confirmed milestone 1 in Chrome and explicitly authorized milestone 2 on 21 October 2026. The user then reported that inspection failed on the localhost fixture in both Brave and Chrome. A focused milestone 2 fix is implemented and automated checks pass. The user subsequently said “ok let's continue with milestone 3,” explicitly authorizing that scope. Work proceeded on milestone 3; no manual milestone 2 pass is inferred from that authorization. Verify inspection and overlays together in Chrome (and Brave if used).
 
@@ -39,7 +40,7 @@ The user subsequently said “ok , now continue with milestone 5A,” explicitly
 | 4 | Mocked single-step guidance | AWAITING USER VERIFICATION | 21 unit tests and 34 browser tests passed; manual Chrome check pending |
 | 5A | Local backend contract and validation | VERIFIED | User confirmed verification on 22 October 2026; prior automated evidence remains recorded |
 | 5B | Conversational Gemini replies with single-step visual guidance | VERIFIED | User confirmed manual verification on 22 October 2026; 55 mocked API + 37 extension unit tests; 55 Chromium tests; five actual local HTTP checks; four real Gemini outcome smoke cases passed |
-| 6A | Multi-step outcome verification | NOT APPROVED | Not run |
+| 6A | AI-driven multi-step guidance with temporary task context | AWAITING USER VERIFICATION | Implemented; automated evidence below; manual Chrome verification pending |
 | 6B | Navigation and lifecycle recovery | NOT APPROVED | Not run |
 | 7 | Optional screenshot fallback | NOT APPROVED — OPTIONAL | Not run |
 | 8 | Security review and release preparation | NOT APPROVED | Not run |
@@ -362,3 +363,92 @@ Provider tests cover strict variants, legacy/extra/blank/oversized output, targe
 The user stated: “great , it everything looks fine , i have manually verified , push the code to milestone-5B”. Milestone 5B is **VERIFIED**. This explicitly authorizes committing its relevant extension/API/shared implementation, tests, fixtures, dependency links/lockfile and documentation, then pushing branch `milestone-5B` to the configured origin, `https://github.com/anantjain-afk/ClickPilot.git`.
 
 This handoff updates verification/authorization documentation only; runtime implementation is unchanged from the recorded passing checks. The previous automated and real Gemini evidence remains applicable and was not rerun solely for this documentation update. Check the final diff and exclude ignored backend secrets, local variables, generated builds and temporary captures from the commit. No deployment, publication or milestone 6A is authorized.
+
+## Milestone 6A plan revision — 22 October 2026
+
+Status: **AWAITING USER VERIFICATION** of the revised plan. Implementation is **NOT APPROVED**. The user requested this plan revision before implementation.
+
+- Updated only `PLAN.md` and this progress record. Replaced mandatory per-step expected outcomes with Gemini next-step reasoning, deterministic content-script observation and controller-owned wait/retry/next-request decisions. Small structured checks are optional; unverified progress, verified step outcomes and user confirmation remain distinct.
+- Made temporary in-memory task context explicit: original goal, current step number, last attempted action and observed verification status. Every subsequent request includes the original goal, a fresh sanitized snapshot and only bounded previous-step context. Proposed strict protocol 3 schemas, privacy checks at both boundaries and disclosure updates are implementation work pending approval.
+- Specified context replacement/cleanup, one in-flight request, bounded refresh/step/no-progress handling and session/request/tab/document/snapshot/attempt guards. Stop and termination clear context; late work cannot restore it. No history, persistent memory, database, LangGraph, new dependency or permission is planned. Lifecycle recovery/checkpoints remain 6B.
+- Added deterministic acceptance coverage and numbered future Chrome checks, including preservation of a synthetic Vercel-domain goal, optional outcomes, no-change recovery, request privacy, Stop and stale replies. These are planned tests, not executed behavior.
+- Actual validation: `git diff --check` — exit 0. Reviewed `git diff --stat` and `git diff -- PLAN.md PROGRESS.md` for scope and consistency; only these two documentation files changed. Typecheck, lint, unit/browser tests, builds and Gemini calls were not run for this documentation-only revision. No runtime verification is claimed; Chrome checks apply after approved implementation.
+
+Stop here for review and explicit approval of the revised 6A plan, as required by `AGENTS.md` milestone workflow steps 2 and 8. No 6A code, commit, push, deployment or next milestone was performed.
+
+
+## Milestone 6A implementation authorization — 22 October 2026
+
+The user requested a minimal `nextStep: "none" | "after_user_action"` signal and instructed: “Update the plan first and start implementing 6A”. The plan was updated before code changes. This explicitly approves 6A implementation, including temporary bounded task context, deterministic observation, optional outcome checks and continuation control. Earlier NOT APPROVED entries are historical. No 6B, commit, push, deployment or publication is authorized. Implementation/check evidence will be recorded below.
+
+
+## Milestone 6A implementation — 22 October 2026
+
+Status: **AWAITING USER VERIFICATION**. The user authorized the final plan update and implementation, including the minimal continuation signal. Earlier planning-only NOT APPROVED entries above record historical gates. No 6B, commit, push, deployment or publication is authorized.
+
+### What changed and why
+
+- Protocol **3** requires `nextStep: "none" | "after_user_action"` on guidance only. Gemini chooses from the original goal, fresh sanitized controls and bounded previous-step context. Final guidance makes no automatic follow-up even after an observed page change; text-only responses pause. The signal is not a completion claim. Missing/invalid signals, text-only continuation fields, arbitrary conditions and old protocols are rejected by strict shared/API/extension validation.
+- The side-panel session owns the original goal, step number and one previous action/event/verification status in memory. Each later request retains that goal and sends fresh filtered controls plus only the immediately previous bounded record. Client and backend privacy filters check previous-action text. No full history, persistent memory, database, LangGraph, dependency or browser permission was added.
+- The content script observes only a trusted click within the highlighted target, clears its overlay, then takes one permitted control/state observation after two seconds. It reports meaningful control/expanded-state change and optional `target_hidden` / `target_expanded` check results. An expanded check requires a transition to true, not an already-expanded target. No input values, arbitrary prose, screenshots or selectors are read/sent as verification.
+- The session controller requests another step only for continuing guidance after a relevant changed observation without a failed check. Unchecked progress remains unverified. No change, failed checks or missing observations offer recovery. Retry keeps the same goal/step; Continue manually records `user_confirmed`. Confirm task complete explicitly credits the user's confirmation. Step checks never establish overall task success.
+- One request at a time, one automatic target refresh per step, a 20-step ceiling, repeated-guidance detection, a 3.5-second observation timeout and existing abort/identity/live-target guards bound work. Late observations and replies cannot revive terminated tasks. Stop, replacement, consent withdrawal, navigation, tab change, panel closure and disconnection cancel work and clear active context. Full navigation/restart pauses or ends safely; resumable recovery remains 6B.
+- Background reinspection now reuses the live observer and injects only when absent. WXT reinjection invalidates the prior context, so reinjecting on every step had changed its document token despite staying on the same page. Reuse preserves document identity while still creating fresh snapshot IDs and checking actual active-tab URL/access. No second background coordinator was introduced.
+- Updated the existing panel copy, disclosure, step/status display, recovery/confirmation controls and badge. Action buttons wrap at narrow widths. Added a synthetic Settings → Domains → Edit domain fixture, focused session/API/browser tests, and protocol/setup/Chrome instructions in `docs/local-api.md` and README.
+
+### Actual automated evidence
+
+| Exact command/check | Result | Boundary |
+|---|---|---|
+| `corepack pnpm typecheck` | Exit 0; shared/API/extension strict TypeScript passed | No provider calls |
+| `corepack pnpm lint` | Exit 0 | No provider calls |
+| `corepack pnpm test` | Exit 0; **61 API tests + 54 extension unit tests passed** | Mock provider/fetch only |
+| `corepack pnpm build` (run by `test:e2e`) | Exit 0; MV3 production build and Worker dry-run bundle passed | No deployment/provider calls |
+| `corepack pnpm test:e2e` | Exit 0; **69 Chromium tests passed (1.8 minutes)** | Local fixture + mock HTTP API only; no Gemini |
+| `git diff --check` | Exit 0 | Source/documentation whitespace check |
+| Python production manifest/client inspection | Exit 0; exactly `activeTab`, `scripting`, `sidePanel`, one loopback host, no static content scripts; Google endpoint/key configuration/key pattern absent from client JS | Boolean/pass output only |
+
+Coverage includes both continuation signals, missing signals, optional check success/failure, mixed checked/unchecked three-step guidance, original-goal retention, fresh snapshots, bounded previous context, private-marker omission, Retry/manual confirmation, step ceiling/no-progress pause, synthetic/unrelated clicks, observation timeout, stale/duplicate observations, Stop/replacement/navigation/tab/consent/panel cleanup and the existing Mock/Manual/overlay regressions. Headless tests open panel HTML in a tab; actual Chrome side-panel behavior still requires user verification.
+
+Visual QA: inspected final synthetic 360px and 260px panel captures at `/tmp/clickpilot-6a-360.png` and `/tmp/clickpilot-6a-260.png`. The existing cream/green design, readable states and wrapped actions are preserved; browser assertions confirm no horizontal overflow. These screenshots use mock output. The Impeccable context launcher exited 127 because its engine/cache was unavailable; existing code supplied context. No detector pass or independent reviewer is claimed.
+
+Intermediate failures: the first typecheck failed because existing fixture/test contexts had not yet migrated; migration resolved it. The first browser command was blocked by sandbox local-server binding and was rerun with approved escalation. The first executable suite passed 54 cases, failed three (document-token changes during reinspection), and skipped ten serial cases. Observer reuse fixed that issue; the next full run passed 67 cases. Two additional check cases and final UI/guard adjustments were then verified in the final suite above. Intermediate failures are not counted as successful evidence.
+
+### Manual Chrome verification required
+
+1. From the project root, run `corepack pnpm dev:api` with the existing ignored backend configuration. Separately run `python3 -m http.server 4173 --directory tests/fixtures`. At `chrome://extensions`, reload `apps/extension/.output/chrome-mv3`. Open `http://127.0.0.1:4173/multistep.html`, click the toolbar, choose **AI assistant**, read the disclosure and consent. Expect Ask disabled before consent and no spontaneous webpage action.
+2. Ask **“Change a Vercel domain. Guide me to Edit domain in this synthetic fixture.”** Expect a single grounded Settings suggestion, then click Settings yourself. Expect a fresh Domains suggestion toward the same goal; click Domains and expect Edit domain. Click only when you choose. A changing goal, guessed/stale target, unsolicited action or repeated automatic request without a relevant click is a failure. Model wording/optional checks vary; deterministic tests cover exact branches.
+3. Inspect fake-data requests to `127.0.0.1:8787` in extension-worker DevTools. Expect protocol 3, the same original goal, new snapshot IDs, increasing step numbers and only one bounded previous action/status. First previous-step context must be null. Older replies/snapshots/history, private URL components, input values, screenshots and keys must be absent. Do not share real credential captures.
+4. For a one-step task, reload/activate and ask **“Only show me Settings; no follow-up.”** Expect final guidance with `nextStep: "none"`; clicking Settings must not issue another model request or claim overall success, even if a step outcome was objectively checked. Ask a general text question: expect no overlay or automatic continuation. **Confirm task complete** must explicitly say completion was confirmed by you.
+5. Ask **“Guide me to Do nothing, then decide the next action after I click.”** When the result uses `after_user_action`, click Do nothing. Expect recovery after the observation window with no request loop. Retry must retain the original goal and current step; Continue manually must send `user_confirmed`, never `verified`. No-check page changes can continue but must show the previous step as unverified. Optional-check and model-branch specifics are also covered reproducibly by browser tests.
+6. During observation and while a reply is pending, separately test Stop, replacement, consent withdrawal, tab switching, navigation and actual panel closure. Expect removed overlays and no late reply/follow-up. Restarting a task must use step 1/null previous context. Navigation/restart requires a fresh task rather than replaying old targets. Check page/panel/worker consoles for unexpected errors. Repeat Mock/Manual smoke checks to confirm they remain local and unchanged in purpose.
+
+### Remaining limits and stop gate
+
+- No real Gemini calls or real-account/domain modifications were made for 6A. All new automated reasoning responses are mocked; no live model/schema availability or accuracy benchmark is claimed. Real model continuation decisions and actual Chrome side-panel lifecycle remain manual verification work.
+- Observation compares eligible control roles/names/context and target expanded state at a fixed two-second point. Arbitrary prose/value changes and transient or slower transitions may be missed and require manual recovery. A hidden check means detached/offscreen/visually unavailable, not proof of a business action.
+- DOM-only, one tab, bounded task and previous-action text, existing one-minute snapshot lifetime. Stop/termination loses the task; no conversation-history clarification, cross-navigation continuation, checkpoints or restart resume was added. Privacy filtering retains its documented heuristic limits.
+- Browser fixture/mock servers are managed by Playwright and close after the suite. No production resources were changed. Build output is ready for unpacked loading.
+
+**STOP:** Await the user's Chrome verification. Fix only 6A if a check fails. Do not begin 6B, commit, push, deploy or publish without separate explicit permission.
+
+## Milestone 6A Chrome verification bug fix — 22 October 2026
+
+Status: **AWAITING USER VERIFICATION**. The user reported that clicking Settings in the real Gemini flow exposed Domains but produced `invalid_provider_response`. This is a 6A correction only; no 6B work, commit, push or deployment was done.
+
+The protocol 3 continuation request preserved the original goal and sent step 2, the previous Settings action/status, a new snapshot and fresh eligible IDs including Domains. The failure was earlier than target membership or extension validation. Synthetic live Gemini calls with the generated Zod JSON Schema returned HTTP 200 but `MAX_TOKENS` and unfinished JSON inside `message`; the adapter correctly rejected the non-`STOP` envelope. The generated schema contained `const`, `pattern`, `minLength`, `maxLength` and `$schema`, which are outside Gemini's documented supported JSON Schema subset. Merely increasing the token budget or removing length keywords did not fix the truncation. A minimal schema using supported keywords and explicit required fields produced complete guidance in repeated synthetic second-step calls; the strict `AssistantResultSchema`, sensitive-text checks, inventory membership, protocol envelope and live-target checks remain unchanged.
+
+The API now sends that provider-facing schema and exposes optional local `GUIDANCE_DIAGNOSTICS=true` logging. Diagnostics contain only fixed failure stages and allowlisted Zod paths/codes, never raw page/model values. A regression test models first-step Settings success followed by a second-step Domains request and makes unsupported schema keywords reproduce the former `MAX_TOKENS` failure. Separate tests check truncated-output diagnostics and fail-closed schema/target rejection.
+
+| Check | Result |
+|---|---|
+| Synthetic live Gemini adapter calls with the corrected schema | First and second calls: HTTP 200, `STOP`, complete JSON, required `nextStep`, valid target membership and protocol 3 envelope; no page/model text printed |
+| Synthetic two-step calls through the already-running local Worker | Both HTTP 200 protocol 3; step 1 selected Settings and step 2 selected Domains, with original goal retained, fresh snapshot/ID inventory, bounded previous context, `nextStep`, and matching request/snapshot IDs; no page/model text printed |
+| `corepack pnpm typecheck` | Exit 0; shared/API/extension |
+| `corepack pnpm lint` | Exit 0 |
+| `corepack pnpm test` | Exit 0; **64 API + 54 extension unit tests passed** |
+| `git diff --check` | Exit 0 |
+| `corepack pnpm build` | Exit 0; extension build and Worker dry-run bundle; Wrangler emitted a sandbox-denied log-file warning, but completed the dry run |
+| `corepack pnpm exec playwright test` | First attempt could not bind the local fixture server in the sandbox. Escalated run: 35 passed, 1 failed, 33 skipped because the user's existing local Worker occupies 127.0.0.1:8787, which the mock API suite also binds. The existing Worker was left running; the prior 6A full suite had passed 69/69 before this backend-only fix. |
+
+Manual Chrome verification: restart the local Worker so it loads the changed API code, rebuild/reload the unpacked extension if needed, and repeat Settings → Domains → Edit domain on `http://127.0.0.1:4173/multistep.html`. Check that each suggestion highlights the currently visible control, only user clicks advance, and the original goal remains in the step 2 request. The full numbered 6A checks above remain applicable. If a failure recurs, enable the optional diagnostics and inspect only stage/path/code in the local Worker console. Stop after user verification; do not proceed to 6B.

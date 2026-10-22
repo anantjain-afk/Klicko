@@ -7,10 +7,10 @@ const snapshot: PageSnapshot = { pageKey: 'page', snapshotId: 'snapshot', elemen
   { id: 'el_1', role: 'button', name: 'Profile', context: 'Navigation', disabled: false, rect: { x: 1, y: 1, width: 100, height: 40 } },
   { id: 'el_2', role: 'button', name: 'person@example.com', context: '', disabled: false, rect: { x: 1, y: 1, width: 100, height: 40 } },
 ] };
-const command: AssistantRequest = { type: 'ASK_ASSISTANT', tabId: 1, sessionId: '7bbf7fc2-9b30-4cf8-9563-66fdacb01d20', requestId: 1, pageKey: 'page', snapshotId: 'snapshot', userGoal: 'Find Profile' };
-const envelope = (result: unknown, identity: GuidanceIdentity = command) => ({ protocolVersion: 2, ...identity, pageKey: 'page', snapshotId: 'snapshot', result });
+const command: AssistantRequest = { type: 'ASK_ASSISTANT', tabId: 1, sessionId: '7bbf7fc2-9b30-4cf8-9563-66fdacb01d20', requestId: 1, pageKey: 'page', snapshotId: 'snapshot', userGoal: 'Find Profile', taskContext: { stepNumber: 1, previousStep: null } };
+const envelope = (result: unknown, identity: GuidanceIdentity = command) => ({ protocolVersion: 3, ...identity, pageKey: 'page', snapshotId: 'snapshot', result });
 const answer = { kind: 'answer', message: 'Profile is a visible control.' };
-const guidance = { kind: 'guidance', message: 'Open your profile here.', targetId: 'el_1', instruction: 'Click Profile.' };
+const guidance = { kind: 'guidance', nextStep: 'none', message: 'Open your profile here.', targetId: 'el_1', instruction: 'Click Profile.' };
 afterEach(() => vi.unstubAllGlobals());
 
 describe('extension API boundary — mocked fetch only', () => {
@@ -42,6 +42,14 @@ describe('extension API boundary — mocked fetch only', () => {
   ])('rejects invalid model output %j again in the extension', async (result) => {
     vi.stubGlobal('fetch', vi.fn(async () => Response.json(envelope(result, { sessionId: command.sessionId, requestId: 1 }))));
     await expect(requestAssistant(command, snapshot, 'https://example.com', new AbortController().signal)).rejects.toThrow('invalid');
+  });
+
+  it('blocks sensitive last-action context before upload', async () => {
+    const fetch = vi.fn(); vi.stubGlobal('fetch', fetch);
+    await expect(requestAssistant({ ...command, taskContext: { stepNumber: 2, previousStep: {
+      action: 'Use sk-private-marker', event: 'trusted_click', status: 'unverifiable',
+    } } }, snapshot, 'https://example.com', new AbortController().signal)).rejects.toThrow('sensitive');
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it('rejects stale text-only envelopes and oversized responses', async () => {

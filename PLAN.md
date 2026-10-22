@@ -1,6 +1,6 @@
 # ClickPilot implementation plan
 
-Status: Milestone 1 verified; milestone 2's separate privacy verification remains unconfirmed. Milestone 3 is verified in Chrome. Milestone 4 is implemented with manual verification pending. The user explicitly approved milestone 5A on 21 October 2026; the local contract is implemented and was verified by the user on 22 October 2026. Milestone 5B's revised plan was explicitly approved on 22 October 2026; implementation, automated checks and user manual verification are complete. Milestone 5B is VERIFIED; the user authorized its commit/push to milestone-5B. Later milestones remain unapproved.
+Status: Milestone 1 verified; milestone 2's separate privacy verification remains unconfirmed. Milestone 3 is verified in Chrome. Milestone 4 is implemented with manual verification pending. The user explicitly approved milestone 5A on 21 October 2026; the local contract is implemented and was verified by the user on 22 October 2026. Milestone 5B's revised plan was explicitly approved on 22 October 2026; implementation, automated checks and user manual verification are complete. Milestone 5B is VERIFIED; the user authorized its commit/push to milestone-5B. Milestone 6A, including the continuation clarification below, was approved for implementation on 22 October 2026. Later milestones remain unapproved.
 Prepared: 21 October 2026.
 
 ## Sources and architecture review
@@ -19,6 +19,7 @@ Apply these clarifications when implementing:
 - Internal page identity and outbound page context are different. Keep document/navigation identity local; omit URL query strings, fragments, sensitive path segments, and unnecessary page titles from outbound context. Sanitization is not proof that arbitrary page text is safe.
 - Resolve the architecture's request-ID inconsistency with an increasing request number within a random session ID. Tab, document, navigation, snapshot, and request checks collectively reject stale results; an ID alone is insufficient.
 - Screenshot fallback is optional and separately approved after DOM-only guidance. Coordinate-only targeting remains outside the MVP.
+- The revised milestone 6A below supersedes reference-architecture language requiring a declared outcome for every step: use AI-driven next-step reasoning with deterministic observation and optional structured outcome verification. Its temporary task context also supersedes 5B's standalone-request restriction only after 6A implementation is approved.
 - Model names, SDK/API behavior, quotas, prices, provider data policies, and deployment controls in the architecture are assumptions to verify against official documentation at the relevant implementation milestone. No current availability or cost claim is made here.
 
 ## Rules for every milestone
@@ -200,23 +201,68 @@ Deployment and effective quota/spend/abuse controls remain separate approval wor
 
 **Gate:** Obtain approval for this revised plan before 5B code, schemas, dependencies, permissions or secret setup. After implementation, stop for user verification of all outcomes. Deployment/public access and milestone 6A require separate approval.
 
-## Milestone 6A — Multi-step outcome verification
+## Milestone 6A — AI-driven multi-step guidance with temporary task context
 
-**Goal:** Advance only after an observed outcome or explicit user confirmation.
+**Status:** IMPLEMENTED — AWAITING USER VERIFICATION, 22 October 2026. The user approved the final continuation clarification and implementation. Automated evidence and remaining limitations are recorded in `PROGRESS.md`; Chrome verification remains pending.
 
-**Likely files:** `src/features/verification/`, session transition logic, content event observation, panel progress UI, fixture and tests, progress.
+**Goal:** Let Gemini reason about the next action from the newly observed page while continuing toward the user's original goal. Use deterministic observation and optional structured outcome verification; do not require a predefined expected outcome for every step.
 
-**Scope:** Small allowlisted outcome vocabulary, target-ancestry click observation, bounded verification timeout, fresh snapshots between steps, and ambiguity recovery. Model text never becomes a selector or executable condition. An unchanged page after a click must not count as success. Offer Retry/Continue manually when objective confirmation is unavailable and distinguish manual confirmation from verified completion.
+**Responsibilities:**
 
-**Acceptance and automated checks:** Test a three-step fixture workflow, unrelated clicks, click-without-outcome, dynamic controls, navigation, timeouts, manual confirmation, and Stop during verification. Test deterministically first and record live smoke evidence separately; run all applicable checks and builds.
+- Gemini chooses one grounded next action from the current sanitized control inventory, or returns an answer, clarification or limitation. It does not generate a workflow script or execute browser actions.
+- The content script observes trusted user actions and permitted page/target changes. It reports facts, not inferred task success, and rechecks every proposed target against the live registry.
+- The side-panel session controller owns temporary task context and decides whether to wait, retry, pause for user input or request the next AI step. The background remains a permission/identity-checking router.
 
-**Manual Chrome verification:**
+**Likely files:** `apps/extension/src/features/session/session.ts`, `useGuidanceSession.ts`, `AssistantPanel.tsx`; content event observation and a small verification module if needed; `src/lib/messages.ts`, `src/lib/assistant.ts`, background routing; `packages/shared/src/guidance.ts`, `privacy.ts`; `apps/api/src/app.ts`, `gemini.ts`; synthetic fixtures, unit/API/browser tests, local API documentation, README and progress. Reuse existing observation, overlay and cancellation code without unrelated refactors.
 
-1. Follow Settings → submenu → field on the fixture, performing each action yourself. Expect one instruction at a time and fresh targeting after each verified outcome.
-2. Click elsewhere and use a fixture target whose action produces no change. Expect no automatic advancement; timeout must offer recovery.
-3. Use Continue manually on an unverifiable step. Expect the UI to distinguish user confirmation from observed success. Stop midway; expect all guidance observers and overlays removed.
+**Minimal continuation signal:** Every guidance result must include `nextStep: "none" | "after_user_action"`. Gemini decides from the original goal, current sanitized controls and bounded previous-step context whether this is the final suggested action (`none`) or an intermediate action requiring another look at the page (`after_user_action`). For example, “show Settings” may end at Settings; “change a Vercel domain” may continue from Settings toward Domains. This is a planning signal, never proof of completion. Missing/invalid signals are rejected; text-only results cannot include a signal and never continue automatically.
 
-**Gate:** User verifies outcome handling before resumable sessions.
+- `none`: display final guidance and observe the user's action if it occurs, without automatically requesting another AI step. Never label the task successful merely because this is the final suggestion.
+- `after_user_action`: wait for a trusted action, observe the updated page, then apply the controller's existing verification/no-progress gates before requesting another AI step. The model cannot bypass these gates.
+- Preserve optional outcome checks, one in-flight request, at most one automatic target refresh per step, a **20-step** session ceiling and a **2-second** bounded observation window. At the ceiling, stop automatic progression and ask the user to start a new task. Retry does not reset the ceiling. A repeated identical target/instruction on an unchanged sanitized inventory pauses for user input.
+- Add deterministic tests and manual checks for final versus continuing guidance, missing/invalid signals, forbidden signals on text replies, no continuation without user action, and no false success claims.
+
+**Temporary task context — required:** Keep one bounded record in the active side-panel session, in memory only:
+
+| Field | Meaning and bound |
+|---|---|
+| Original user goal | The submitted task, retained unchanged across steps; existing nonempty 240-character limit |
+| Current step number | Positive bounded integer; increment when accepting a new guidance step, not for retries of the same step; stop for user input at a documented finite session step limit |
+| Last attempted action | Only the immediately preceding attempt: a sanitized description up to 160 characters and an observed event enum (such as `none` or `trusted_click`); never input values, raw events, HTML or an accumulated summary |
+| Observed verification status | Small explicit enum: `pending`, `verified`, `not_verified`, `unverifiable` or `user_confirmed`; a click or page change alone must not set `verified` |
+
+For the first request, previous-step context is null. On each subsequent Gemini request, send the original goal, a **fresh sanitized DOM snapshot**, the step number and only the previous action/status. Replace that previous-step record after each attempt; do not append older steps, model replies, conversation turns, hidden reasoning or old snapshots. A step's optional outcome check is kept only while that step is active. Previous target IDs/geometry must never be reused as current targets.
+
+Extend the shared strict request schema and provider prompt explicitly for this bounded context. Plan protocol **3** for request/success/error envelopes together; update clients, fixtures and API docs, and reject version mismatches rather than adding a legacy layer. Retain the four existing result kinds; permit an optional structured outcome only on `guidance`. Validate context types, text lengths, enum values, step bounds, unknown fields and total bytes at both boundaries. Apply privacy filtering to the goal, fresh snapshot and previous-action description before upload and again on the backend. Gemini receives only permitted origin/control context and bounded task context, not local identity metadata. Update the existing disclosure to explain repeated requests and the temporary context sent with them. No body/context logging.
+
+**Observation and next-step flow:**
+
+1. A new task cancels the old run and initializes a new session with its original goal. Observe, sanitize and request one Gemini result. Render guidance only after current-tab/document/snapshot and live-target checks succeed; the user performs every action.
+2. Observe a trusted action within the highlighted target's ancestry. Clear obsolete decoration and collect permitted target/page changes during a bounded observation window. Coalesce events; unrelated clicks or arbitrary DOM mutations must not initiate requests.
+3. If an optional outcome can be objectively checked, evaluate it deterministically. Keep the vocabulary small, initially target visibility or target expanded state, using allowlisted fields bound to the current target. Unsupported/malformed checks are rejected. No AI-generated JavaScript, arbitrary selectors, field-value reads or general-purpose condition language.
+4. After a relevant action and a meaningful fresh page change, the controller may request the next Gemini step even when no outcome was supplied or objective verification is unavailable. Report the previous status honestly as unverified; a fresh snapshot supports new reasoning without proving the previous action or overall task succeeded. If a supplied check fails, no useful change is observed or the observation window expires, wait and offer Retry/Continue manually rather than looping. Manual continuation is recorded as `user_confirmed`, never objective proof.
+5. Gemini reasons anew from the original goal and current snapshot. Allow one in-flight request, retain at most one automatic target refresh per step, and pause on repeated/no-progress guidance or provider errors. No recursive retry or background polling loop. Answers, clarification and unsupported replies pause progression; answers are not verified task completion. End the task on explicit user confirmation or Stop, with completion wording distinguishing user confirmation from observed step checks.
+
+**Lifecycle and stale-request protection:** Context belongs to one session and tab, not the service worker. Check session ID, monotonic request ID, tab, document/navigation identity and snapshot before applying any async reply, observation or verification result; bind local step callbacks to the current attempt as well. Abort superseded requests where possible and always ignore late results. Retry preserves the original goal/current step while replacing the attempt; starting a different task creates fresh context. Stop, session termination, consent withdrawal, panel disconnection/closure and unrecoverable invalidation cancel pending work and clear all task context, observers and overlays. A terminated session cannot be revived by a late reply. In 6A, navigation invalidates stale work and pauses/ends safely; automatic continuation across full navigation, permission loss, panel/worker restart and resumable checkpoints remain 6B work.
+
+**Boundaries:** No full conversation history, persistent memory, database, LangGraph, other agent/state framework, new dependency or browser permission is planned. No `storage` permission or checkpoint persistence in 6A. Do not expand extraction to private page prose, field values or screenshots, and never automatically click, type, submit or navigate. Task context stays volatile; restarting after termination requires a new task.
+
+**Acceptance and automated checks:**
+
+- Use a deterministic three-step synthetic workflow, including a step without an outcome check and a mixed sequence with an objective check. Assert every subsequent request retains the original goal, has a newly collected sanitized snapshot and contains only bounded last-step context. Include the synthetic goal “Change a Vercel domain” to prove intermediate Settings/Domains actions do not replace or lose the original intent; no live account change is needed.
+- Test original-goal retention on Retry, correct step/attempt accounting, null initial context, replacement rather than history accumulation, bounds/unknown-field rejection and private-marker omission from prior-action context at both privacy boundaries. Reject malformed outcomes, selectors, scripts and stale target IDs; old protocol/result contracts remain rejected.
+- Test unrelated/synthetic clicks, click-without-change, meaningful page changes without objective verification, dynamic controls, optional check success/failure, timeouts, manual continuation, repeated/no-progress guidance, finite step limits and bounded refreshes. A page change or model answer must never falsely mark completion.
+- Test Stop, replacement, consent withdrawal, navigation, tab changes and panel closure during observation, verification and provider requests. Assert context cleanup and rejection of late replies/events from previous attempts/sessions, including no subsequent request or overlay after termination.
+- During implementation run `corepack pnpm typecheck`, `corepack pnpm lint`, `corepack pnpm test`, `corepack pnpm test:e2e` and `corepack pnpm build`. Keep deterministic browser/API coverage separate from any explicitly authorized real Gemini smoke evidence; report exact commands/results and unavailable checks.
+
+**Manual Chrome verification after implementation:**
+
+1. Build/reload the extension, run the local Worker and synthetic fixture server, activate the fixture and consent to AI assistance. Submit the documented synthetic domain-change goal once. Follow Settings → Domains → domain control yourself. Expect one instruction at a time and fresh targets that continue toward the original goal without re-entering it. A changing goal, stale highlight or autonomous page action fails verification.
+2. Inspect only fake-data local request payloads. Expect the original goal, step number, fresh sanitized inventory and one bounded previous action/status; the first request has null previous-step context. Older snapshots/replies/history, field values, URL paths/query/hash, screenshots or secrets must be absent. Retry must retain the goal without incrementing the guidance step.
+3. Exercise fixture steps with and without optional checks. Expect a new AI step after a relevant action and useful page change even without a declared outcome; the UI must keep unverified progress distinct from verified checks. Click elsewhere or use a target producing no change; expect waiting followed by recovery controls, not repeated AI requests or a success claim. Continue manually must be labelled user-confirmed.
+4. Stop during observation and during a delayed reply; repeat with a replacement goal, consent withdrawal and panel closure. Expect cleanup, no late text/highlights/follow-up requests and no old task context on a fresh session. Navigate or switch tabs: expect safe invalidation/pause or restart instructions, not replayed targets. Check page/panel/worker consoles for unexpected errors. Any stale result, leaked context or unsolicited action fails verification.
+
+**Gate:** Obtain explicit approval of this revised 6A plan before implementation. After implementation, record actual evidence in `PROGRESS.md`, set AWAITING USER VERIFICATION and stop. User verification and separate 6B approval are required before resumable sessions.
 
 ## Milestone 6B — Navigation and interrupted-session recovery
 
@@ -277,4 +323,4 @@ Deployment and effective quota/spend/abuse controls remain separate approval wor
 
 ## Current approval gate
 
-The revised milestone 5B plan was explicitly approved on 22 October 2026. Its single-step conversational scope is implemented and manually verified by the user. Actual checks and real Gemini smoke calls are recorded separately in PROGRESS.md. The user authorized committing/pushing its relevant code to `milestone-5B`. Milestone 6A and deployment remain unapproved.
+The revised milestone 5B plan was explicitly approved on 22 October 2026. Its single-step conversational scope is implemented and manually verified by the user. Actual checks and real Gemini smoke calls are recorded separately in PROGRESS.md. The user authorized committing/pushing its relevant code to `milestone-5B`. The user requested the documentation-only 6A revision above on 22 October 2026. The user explicitly approved 6A implementation after adding the minimal continuation signal on 22 October 2026. Milestone 6A is implemented and AWAITING USER VERIFICATION; actual evidence is in `PROGRESS.md`. Stop here; 6B and deployment remain unapproved.

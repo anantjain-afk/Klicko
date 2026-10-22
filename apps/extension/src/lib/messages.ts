@@ -1,3 +1,4 @@
+import { ExpectedOutcomeSchema, type ExpectedOutcome } from '@clickpilot/shared/guidance';
 export const MAX_ELEMENTS = 150;
 
 export interface ObservedElement {
@@ -26,7 +27,7 @@ export interface OverlayTarget {
   snapshotId: string;
   targetId: string;
   instruction: string;
-  guidance?: GuidanceIdentity;
+  guidance?: GuidanceIdentity & { observe?: boolean; expectedOutcome?: ExpectedOutcome };
 }
 
 export type PanelRequest =
@@ -54,6 +55,21 @@ export interface GuidanceClick extends GuidanceIdentity {
   targetId: string;
 }
 
+export interface ActionObservation extends GuidanceIdentity {
+  type: 'ACTION_OBSERVED';
+  pageKey: string;
+  snapshotId: string;
+  targetId: string;
+  changed: boolean;
+  status: 'verified' | 'not_verified' | 'unverifiable';
+}
+
+export function isActionObservation(value: unknown): value is ActionObservation {
+  if (!isRecord(value) || value.type !== 'ACTION_OBSERVED') return false;
+  return isGuidanceClick({ ...value, type: 'GUIDANCE_CLICKED' }) && typeof value.changed === 'boolean'
+    && typeof value.status === 'string' && ['verified', 'not_verified', 'unverifiable'].includes(value.status);
+}
+
 export type InspectionResponse =
   | { type: 'INSPECTION_RESULT'; requestId: number; tabId: number; snapshot: PageSnapshot }
   | { type: 'INSPECTION_ERROR'; requestId: number; reason: 'no-tab' | 'unsupported' | 'reactivate' | 'changed' };
@@ -78,7 +94,9 @@ function isOverlayTarget(value: Record<string, unknown>): boolean {
     && value.instruction.length <= 240
     && (value.guidance === undefined || (isRecord(value.guidance)
       && typeof value.guidance.sessionId === 'string' && value.guidance.sessionId.length > 0
-      && value.guidance.sessionId.length <= 80 && isId(value.guidance.requestId)));
+      && value.guidance.sessionId.length <= 80 && isId(value.guidance.requestId)
+      && (value.guidance.observe === undefined || typeof value.guidance.observe === 'boolean')
+      && (value.guidance.expectedOutcome === undefined || ExpectedOutcomeSchema.safeParse(value.guidance.expectedOutcome).success)));
 }
 
 function hasOptionalSnapshotId(value: Record<string, unknown>): boolean {

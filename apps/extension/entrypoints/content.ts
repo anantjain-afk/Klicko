@@ -1,6 +1,8 @@
 import { browser, type Browser } from 'wxt/browser';
 import { defineContentScript } from 'wxt/utils/define-content-script';
-import { collectElements } from '../src/features/observer/collect-elements';
+import { OBSERVATION_MS } from '@clickpilot/shared/guidance';
+import { eligibleElements } from '@clickpilot/shared/privacy';
+import { visibleRect, collectElements } from '../src/features/observer/collect-elements';
 import { showOverlay } from '../src/features/overlay/renderer';
 import { isMockFixtureUrl } from '../src/features/session/mock';
 import { isContentRequest, type OverlayResponse, type PageSnapshot, type PageInvalidation } from '../src/lib/messages';
@@ -27,7 +29,11 @@ export default defineContentScript({
     let removeOverlay: (() => void) | null = null;
     let removeClickListener: (() => void) | null = null;
 
+    let observationTimer: ReturnType<typeof setTimeout> | undefined;
+
     function clearOverlay() {
+      clearTimeout(observationTimer);
+      observationTimer = undefined;
       removeOverlay?.();
       removeOverlay = null;
       removeClickListener?.();
@@ -56,6 +62,10 @@ export default defineContentScript({
       clear();
       observedUrl = location.href;
       pageKey = crypto.randomUUID();
+    }
+
+    function inventorySignature(elements: PageSnapshot['elements']) {
+      return JSON.stringify(eligibleElements(elements).map(({ role, name, context }) => ({ role, name, context })));
     }
 
     function handleMessage(message: unknown, sender: { id?: string }, sendResponse: (response: PageSnapshot | OverlayResponse | { ok: boolean }) => void) {
@@ -88,11 +98,32 @@ export default defineContentScript({
             const onClick = (event: MouseEvent) => {
               if (!event.isTrusted || !(event.target instanceof Node) || !target.contains(event.target)
                 || !isCurrent() || !removeOverlay) return;
+              const before = inventorySignature(currentSnapshot?.elements ?? []);
+              const expandedBefore = target.getAttribute('aria-expanded');
               void browser.runtime.sendMessage({
                 type: 'GUIDANCE_CLICKED', pageKey, snapshotId, targetId: message.targetId,
                 sessionId: guidance.sessionId, requestId: guidance.requestId,
               }).catch(() => undefined);
               clearOverlay();
+              if (guidance.observe) {
+                observationTimer = setTimeout(() => {
+                  observationTimer = undefined;
+                  checkNavigation();
+                  if (!isCurrent()) return;
+                  const after = inventorySignature(collectElements(document).elements);
+                  const expanded = target.getAttribute('aria-expanded');
+                  const hidden = !(target instanceof HTMLElement) || !visibleRect(target, window);
+                  const outcome = guidance.expectedOutcome;
+                  const verified = outcome?.type === 'target_hidden' ? hidden
+                    : outcome?.type === 'target_expanded' && expandedBefore !== 'true' && expanded === 'true';
+                  void browser.runtime.sendMessage({
+                    type: 'ACTION_OBSERVED', pageKey, snapshotId, targetId: message.targetId,
+                    sessionId: guidance.sessionId, requestId: guidance.requestId,
+                    changed: before !== after || expandedBefore !== expanded,
+                    status: outcome ? (verified ? 'verified' : 'not_verified') : 'unverifiable',
+                  }).catch(() => undefined);
+                }, OBSERVATION_MS);
+              }
             };
             document.addEventListener('click', onClick, true);
             removeClickListener = () => document.removeEventListener('click', onClick, true);

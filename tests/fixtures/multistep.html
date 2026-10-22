@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ClickPilot synthetic domain task</title>
+  <style>
+    body { margin: 32px; max-width: 640px; background: #f7f6f2; color: #202721; font: 16px/1.5 system-ui, sans-serif; }
+    button { font: inherit; padding: 12px 18px; margin: 8px; }
+    [hidden] { display: none; }
+  </style>
+</head>
+<body>
+  <main aria-label="Synthetic domain settings">
+    <h1>Synthetic domain task</h1>
+    <p>Fake controls only. Ask “Change a Vercel domain”. Every action must be performed by you.</p>
+    <button id="settings" aria-expanded="false">Settings</button>
+    <section id="domains-panel" hidden><button id="domains" aria-expanded="false">Domains</button></section>
+    <section id="edit-panel" hidden><button id="edit">Edit domain</button></section>
+    <button id="no-change">Do nothing</button>
+    <button id="unrelated">Unrelated action</button>
+    <output id="result">No domain action taken</output>
+  </main>
+  <script>
+    document.getElementById('settings').onclick = (event) => {
+      event.currentTarget.setAttribute('aria-expanded', 'true');
+      document.getElementById('domains-panel').hidden = false;
+    };
+    document.getElementById('domains').onclick = (event) => {
+      event.currentTarget.setAttribute('aria-expanded', 'true');
+      document.getElementById('edit-panel').hidden = false;
+    };
+    document.getElementById('edit').onclick = () => { document.getElementById('result').textContent = 'Edit action observed in this fixture'; };
+  </script>
+</body>
+</html>

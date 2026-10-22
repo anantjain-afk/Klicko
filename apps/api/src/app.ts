@@ -5,6 +5,7 @@ import {
   validateGuidanceResponse, type ErrorCode,
 } from '@clickpilot/shared/guidance';
 import { containsSensitiveText, prepareProviderContext, type ProviderContext } from '@clickpilot/shared/privacy';
+import { reportValidationFailure } from './diagnostics';
 
 const MESSAGES: Record<ErrorCode, string> = {
   invalid_request: 'The request does not match the guidance contract.',
@@ -26,7 +27,7 @@ const MESSAGES: Record<ErrorCode, string> = {
 };
 
 function errorResponse(code: ErrorCode, status: number): Response {
-  return Response.json({ protocolVersion: 2, kind: 'error', error: { code, message: MESSAGES[code] } }, {
+  return Response.json({ protocolVersion: 3, kind: 'error', error: { code, message: MESSAGES[code] } }, {
     status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' },
   });
 }
@@ -88,20 +89,29 @@ export function createApp(provider?: (context: ProviderContext, signal: AbortSig
     }
     if (c.req.raw.signal.aborted) return errorResponse('cancelled', 499);
     const selection = AssistantResultSchema.safeParse(output);
-    if (!selection.success) return errorResponse('invalid_provider_response', 502);
+    if (!selection.success) {
+      reportValidationFailure(c.env ?? {}, 'assistant_schema', selection.error.issues);
+      return errorResponse('invalid_provider_response', 502);
+    }
     if (containsSensitiveText(selection.data.message)
       || (selection.data.kind === 'guidance' && containsSensitiveText(selection.data.instruction))) {
+      reportValidationFailure(c.env ?? {}, 'sensitive_output');
       return errorResponse('invalid_provider_response', 502);
     }
     const response = validateGuidanceResponse({
-      protocolVersion: 2,
+      protocolVersion: 3,
       sessionId: parsed.data.sessionId,
       requestId: parsed.data.requestId,
       pageKey: parsed.data.page.pageKey,
       snapshotId: parsed.data.page.snapshotId,
       result: selection.data,
     }, parsed.data, context.elements.map((element) => element.id));
-    if (!response) return errorResponse('invalid_provider_response', 502);
+    if (!response) {
+      const missingTarget = selection.data.kind === 'guidance'
+        && !context.elements.map((element) => element.id).includes(selection.data.targetId);
+      reportValidationFailure(c.env ?? {}, missingTarget ? 'target_membership' : 'response_envelope');
+      return errorResponse('invalid_provider_response', 502);
+    }
     return c.json(response);
   });
   app.all('/v1/guidance/next', () => errorResponse('method_not_allowed', 405));

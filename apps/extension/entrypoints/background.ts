@@ -27,11 +27,18 @@ async function inspectActiveTab(requestId: number): Promise<InspectionResponse> 
   if (activatedOrigins.get(tab.id) !== new URL(tab.url).origin) return errorResponse(requestId, 'reactivate');
 
   try {
-    await browser.scripting.executeScript({
-      target: { tabId: tab.id },
-      files: ['/content-scripts/content.js'],
-    });
-    const snapshot: unknown = await browser.tabs.sendMessage(tab.id, { type: 'COLLECT_ELEMENTS' }, { frameId: 0 });
+    let snapshot: unknown;
+    try {
+      // Reuse the live document observer. Reinjecting WXT invalidates its old
+      // context, which would unnecessarily change page identity between steps.
+      snapshot = await browser.tabs.sendMessage(tab.id, { type: 'COLLECT_ELEMENTS' }, { frameId: 0 });
+    } catch {
+      await browser.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ['/content-scripts/content.js'],
+      });
+      snapshot = await browser.tabs.sendMessage(tab.id, { type: 'COLLECT_ELEMENTS' }, { frameId: 0 });
+    }
     if (!isPageSnapshot(snapshot)) return errorResponse(requestId, 'changed');
 
     const [currentTab] = await browser.tabs.query({ active: true, lastFocusedWindow: true });

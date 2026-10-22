@@ -24,5 +24,5 @@ for (const [kind, userGoal] of cases) {
   const result = validateGuidanceResponse(body, request, request.elements.map((element) => element.id));
   assert.ok(result, `Gemini ${kind} smoke returned invalid or ungrounded output`);
   assert.equal(result.result.kind, kind, `Gemini ${kind} smoke chose a different outcome`);
-  globalThis.console.log(`REAL GEMINI PASS: ${kind}, protocol 2, bounded validated result${kind === 'guidance' ? ', observed target' : ''}`);
+  globalThis.console.log(`REAL GEMINI PASS: ${kind}, protocol 3, bounded validated result${kind === 'guidance' ? ', observed target' : ''}`);
 }

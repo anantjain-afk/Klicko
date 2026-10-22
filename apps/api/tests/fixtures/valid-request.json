@@ -1,5 +1,5 @@
 {
-  "protocolVersion": 2,
+  "protocolVersion": 3,
   "operation": "next",
   "sessionId": "7bbf7fc2-9b30-4cf8-9563-66fdacb01d20",
   "requestId": 1,
@@ -17,5 +17,9 @@
       "context": "Main navigation",
       "disabled": false
     }
-  ]
+  ],
+  "taskContext": {
+    "stepNumber": 1,
+    "previousStep": null
+  }
 }

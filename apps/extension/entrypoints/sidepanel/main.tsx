@@ -220,7 +220,7 @@ function App() {
           <span className="brand-mark" aria-hidden="true"><span /></span>
           <span>ClickPilot</span>
         </div>
-        <span className="status">{mode === 'mock' ? 'Mock mode · Local only' : mode === 'assistant' ? 'Gemini · One question' : 'Manual highlights'}</span>
+        <span className="status">{mode === 'mock' ? 'Mock mode · Local only' : mode === 'assistant' ? 'Gemini · Guided task' : 'Manual highlights'}</span>
       </header>
       <nav className="mode-switch" aria-label="Guidance mode">
         <button type="button" aria-pressed={mode === 'assistant'} onClick={() => setMode('assistant')}>AI assistant</button>

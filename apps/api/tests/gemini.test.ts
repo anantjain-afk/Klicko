@@ -5,11 +5,17 @@ import { geminiReply, ProviderError } from '../src/gemini';
 import fixture from './fixtures/valid-request.json';
 
 const env = { GUIDANCE_ENABLED: 'true', GEMINI_API_KEY: 'synthetic-secret', GEMINI_MODEL: 'gemini-3.5-flash-lite' };
-const context = { userGoal: 'Find Settings', page: { origin: 'https://example.com' }, elements: [{ id: 'el_1', role: 'button', name: 'Settings', context: 'Navigation' }] };
+const context = { userGoal: 'Find Settings', taskContext: { stepNumber: 1, previousStep: null }, page: { origin: 'https://example.com' }, elements: [{ id: 'el_1', role: 'button', name: 'Settings', context: 'Navigation' }] };
 const reply = { kind: 'answer', message: 'Settings is available in navigation.' };
 const wire = (value: unknown) => Response.json({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(value) }] } }] });
 const post = () => ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fixture) });
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+function schemaKeywords(value: unknown): string[] {
+  if (!value || typeof value !== 'object') return [];
+  if (Array.isArray(value)) return value.flatMap(schemaKeywords);
+  return Object.entries(value).flatMap(([key, child]) => [key, ...schemaKeywords(child)]);
+}
 
 describe('Gemini REST adapter — mocked fetch only', () => {
   it('sends one sanitized turn, a JSON schema and the key only in the backend header', async () => {
@@ -23,6 +29,57 @@ describe('Gemini REST adapter — mocked fetch only', () => {
     expect(body.contents).toEqual([{ role: 'user', parts: [{ text: JSON.stringify(context) }] }]);
     expect(JSON.stringify(body)).not.toMatch(/synthetic-secret|fixture-snapshot|viewport|rect|previous_interaction/);
     expect(body.generationConfig.responseFormat.text.schema.anyOf).toHaveLength(4);
+    expect(schemaKeywords(body.generationConfig.responseFormat.text.schema)).not.toEqual(
+      expect.arrayContaining(['const', 'minLength', 'maxLength', 'pattern', '$schema']),
+    );
+  });
+
+  it('accepts a fresh second-step Domains target with the original goal and bounded context', async () => {
+    const goal = 'Guide me through changing my domain';
+    const first = { ...fixture, userGoal: goal };
+    const second = { ...first, requestId: 2, page: { ...first.page, snapshotId: 'settings-snapshot' },
+      taskContext: { stepNumber: 2, previousStep: { action: 'Click Settings.', event: 'trusted_click', status: 'unverifiable' } },
+      elements: [{ ...first.elements[0], name: 'Settings' },
+        { ...first.elements[0], id: 'el_2', name: 'Domains' }] };
+    const requests: unknown[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (_url, init: RequestInit) => {
+      const body = JSON.parse(init.body as string);
+      requests.push(JSON.parse(body.contents[0].parts[0].text));
+      const schema = body.generationConfig.responseFormat.text.schema;
+      if (schemaKeywords(schema).some((key) => ['const', 'minLength', 'maxLength', 'pattern', '$schema'].includes(key))) {
+        return Response.json({ candidates: [{ finishReason: 'MAX_TOKENS', content: { parts: [{ text: '{"kind":"guidance","message":"truncated' }] } }] });
+      }
+      return wire(requests.length === 1
+        ? { kind: 'guidance', nextStep: 'after_user_action', targetId: 'el_1', message: 'Open Settings.', instruction: 'Click Settings.' }
+        : { kind: 'guidance', nextStep: 'after_user_action', targetId: 'el_2', message: 'Open Domains.', instruction: 'Click Domains.' });
+    }));
+    const app = createApp();
+    const send = (request: unknown) => app.request('/v1/guidance/next', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request),
+    }, env);
+    const firstResponse = await send(first);
+    expect(firstResponse.status).toBe(200);
+    expect((await firstResponse.json()).result.targetId).toBe('el_1');
+    const secondResponse = await send(second);
+    expect(secondResponse.status).toBe(200);
+    expect((await secondResponse.json()).result.targetId).toBe('el_2');
+    expect(requests).toMatchObject([
+      { userGoal: goal, taskContext: { stepNumber: 1, previousStep: null }, elements: [{ id: 'el_1' }] },
+      { userGoal: goal, taskContext: second.taskContext, elements: [{ id: 'el_1' }, { id: 'el_2' }] },
+    ]);
+  });
+
+  it('reports only a stage and Zod paths for truncated output in development diagnostics', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ candidates: [{ finishReason: 'MAX_TOKENS',
+      content: { parts: [{ text: 'PRIVATE-MARKER' }] } }] })));
+    const response = await createApp().request('/v1/guidance/next', post(), { ...env, GUIDANCE_DIAGNOSTICS: 'true' });
+    expect(response.status).toBe(502);
+    expect(warn).toHaveBeenCalledWith('[ClickPilot guidance validation]', expect.objectContaining({
+      stage: 'provider_envelope', paths: ['candidates.[index].finishReason'], codes: ['invalid_value'],
+    }));
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('PRIVATE-MARKER');
+    warn.mockRestore();
   });
 
   it('fails closed for disabled service, absent credentials or invalid model without fetch', async () => {
@@ -84,7 +141,7 @@ describe('Gemini REST adapter — mocked fetch only', () => {
   });
 });
 
-describe('protocol 2 result contract', () => {
+describe('protocol 3 result contract', () => {
   it.each(['answer', 'clarification', 'unsupported'])('strictly bounds text-only %s', (kind) => {
     expect(AssistantResultSchema.parse({ kind, message: '  Useful reply. ' })).toEqual({ kind, message: 'Useful reply.' });
     for (const value of [{ kind }, { kind, message: '' }, { kind, message: ' ' }, { kind, message: 'x'.repeat(601) },
@@ -93,7 +150,7 @@ describe('protocol 2 result contract', () => {
     }
   });
   it('rejects old results, unexpected plans and blank or overlong guidance', () => {
-    const guidance = { kind: 'guidance', targetId: 'el_1', message: 'Open settings here.', instruction: 'Click Settings.' };
+    const guidance = { kind: 'guidance', nextStep: 'none', targetId: 'el_1', message: 'Open settings here.', instruction: 'Click Settings.' };
     expect(AssistantResultSchema.safeParse(guidance).success).toBe(true);
     for (const value of [{ ...guidance, message: 'x'.repeat(601) }, { ...guidance, message: ' ' },
       { ...guidance, instruction: '' }, { ...guidance, instruction: 'x'.repeat(161) }, { ...guidance, expectedOutcome: {} },

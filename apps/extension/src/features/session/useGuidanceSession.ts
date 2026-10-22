@@ -36,7 +36,7 @@ export function useGuidanceSession(live: boolean) {
     let trackedTabId: number | undefined;
     connection.current = port;
     const session = (live ? createAssistantSession : createMockSession)({
-      ask: (tabId, snapshot, task, identity, signal) => askThroughPanel(port, { type: 'ASK_ASSISTANT', tabId, pageKey: snapshot.pageKey, snapshotId: snapshot.snapshotId, userGoal: task, ...identity }, signal),
+      ask: (tabId, snapshot, task, identity, signal, taskContext) => askThroughPanel(port, { type: 'ASK_ASSISTANT', tabId, pageKey: snapshot.pageKey, snapshotId: snapshot.snapshotId, userGoal: task, taskContext, ...identity }, signal),
       inspect: (requestId) => browser.runtime.sendMessage({ type: 'INSPECT_ACTIVE_TAB', requestId }),
       track: (tabId) => { trackedTabId = tabId; port.postMessage({ type: 'TRACK_PAGE', tabId }); },
       highlight: (tabId, snapshot, targetId, instruction, guidance) => browser.runtime.sendMessage({

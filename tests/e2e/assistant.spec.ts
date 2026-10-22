@@ -15,19 +15,31 @@ const server = createServer(async (request, response) => {
   const target = body.elements.find((element: { name: string }) => element.name === 'Primary target');
   const kind = outcome.replace('delayed-', '');
   let result: unknown = kind === 'guidance'
-    ? { kind, message: 'Use the primary control to try the fixture.', targetId: target?.id ?? 'el_999', instruction: 'Click Primary target.' }
+    ? { kind, nextStep: 'none', message: 'Use the primary control to try the fixture.', targetId: target?.id ?? 'el_999', instruction: 'Click Primary target.' }
     : { kind, message: kind === 'answer' ? 'A button offers an action when you click it.' : kind === 'clarification' ? 'Which Settings control do you mean?' : 'The available controls do not reveal that information.' };
+  if (['workflow', 'workflow-check', 'no-change', 'failed-check', 'final-changing', 'hidden-check'].includes(kind)) {
+    const name = kind === 'no-change' || kind === 'failed-check' ? 'Do nothing'
+      : kind === 'final-changing' ? 'Settings'
+      : body.elements.some((element: { name: string }) => element.name === 'Edit domain') ? 'Edit domain'
+      : body.elements.some((element: { name: string }) => element.name === 'Domains') ? 'Domains' : 'Settings';
+    const control = body.elements.find((element: { name: string }) => element.name === name);
+    result = { kind: 'guidance', targetId: control?.id ?? 'el_999', message: `Use ${name} toward your original goal.`,
+      instruction: `Click ${name}.`, nextStep: name === 'Edit domain' || kind === 'final-changing' ? 'none' : 'after_user_action',
+      ...((kind === 'workflow-check' && name === 'Settings') || kind === 'failed-check' || kind === 'final-changing' || kind === 'hidden-check'
+        ? { expectedOutcome: { type: kind === 'hidden-check' ? 'target_hidden' : 'target_expanded' } } : {}) };
+  }
+  if (kind === 'missing-signal') result = { kind: 'guidance', targetId: target.id, message: 'Invalid signal', instruction: 'Click' };
   if (kind === 'hostile') result = { kind: 'answer', message: '<img src=x onerror="window.bad=true"> **literal** <script>alert(1)</script>' };
-  if (kind === 'unknown') result = { kind: 'guidance', message: 'UNTRUSTED NARRATIVE', targetId: 'el_999', instruction: 'Bad target' };
+  if (kind === 'unknown') result = { kind: 'guidance', nextStep: 'none', message: 'UNTRUSTED NARRATIVE', targetId: 'el_999', instruction: 'Bad target' };
   if (kind === 'invalid-answer') result = { kind: 'answer', message: 'UNTRUSTED NARRATIVE', targetId: target.id };
   if (outcome.startsWith('delayed-')) await new Promise<void>((resolve) => { release = resolve; });
   response.setHeader('Content-Type', 'application/json');
   if (kind === 'oversized') { response.end('x'.repeat(8193)); return; }
   if (kind === 'rate-limit') {
     response.statusCode = 429;
-    response.end(JSON.stringify({ protocolVersion: 2, kind: 'error', error: { code: 'rate_limited', message: 'Gemini quota was reached. Wait before retrying.' } })); return;
+    response.end(JSON.stringify({ protocolVersion: 3, kind: 'error', error: { code: 'rate_limited', message: 'Gemini quota was reached. Wait before retrying.' } })); return;
   }
-  response.end(JSON.stringify({ protocolVersion: 2, sessionId: body.sessionId,
+  response.end(JSON.stringify({ protocolVersion: 3, sessionId: body.sessionId,
     requestId: kind === 'stale' ? body.requestId + 1 : body.requestId,
     pageKey: body.page.pageKey, snapshotId: body.page.snapshotId, result }));
 });
@@ -35,10 +47,10 @@ test.beforeAll(async () => { await new Promise<void>((resolve) => server.listen(
 test.afterAll(async () => { release?.(); server.closeAllConnections(); await new Promise<void>((resolve) => server.close(() => resolve())); });
 test.beforeEach(() => { requests = []; outcome = 'guidance'; release = undefined; });
 
-async function openAssistant() {
+async function openAssistant(fixture = 'guidance.html') {
   const extension = await launchExtension();
   const page = await extension.context.newPage();
-  await page.goto('http://127.0.0.1:4173/guidance.html?private=PRIVATE-QUERY#PRIVATE-FRAGMENT');
+  await page.goto(`http://127.0.0.1:4173/${fixture}?private=PRIVATE-QUERY#PRIVATE-FRAGMENT`);
   await activateToolbar(page, extension.extensionId);
   const panel = await extension.context.newPage();
   await panel.goto(`chrome-extension://${extension.extensionId}/sidepanel.html`);
@@ -103,7 +115,7 @@ for (const kind of ['answer', 'clarification', 'unsupported', 'hostile']) {
   });
 }
 
-for (const kind of ['unknown', 'invalid-answer', 'stale', 'oversized', 'rate-limit']) {
+for (const kind of ['unknown', 'invalid-answer', 'stale', 'oversized', 'rate-limit', 'missing-signal']) {
   test(`MOCK API: ${kind} is an honest error with no narrative or overlay`, async () => {
     const { context, page, panel } = await openAssistant();
     try {
@@ -144,3 +156,138 @@ for (const kind of ['answer', 'guidance']) {
     });
   }
 }
+
+
+for (const mode of ['workflow', 'workflow-check']) {
+  test(`MOCK API: ${mode} reasons through three steps with bounded original-goal context`, async () => {
+    const { context, page, panel } = await openAssistant('multistep.html');
+    try {
+      outcome = mode;
+      await submit(panel, 'Change a Vercel domain');
+      await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Settings.');
+      expect(requests).toHaveLength(1);
+      expect(requests[0]!.taskContext).toEqual({ stepNumber: 1, previousStep: null });
+      await page.locator('#unrelated').click();
+      await page.evaluate(() => document.getElementById('settings')!.click());
+      await page.waitForTimeout(2200);
+      expect(requests).toHaveLength(1);
+      await page.reload();
+      await activateToolbar(page, new URL(panel.url()).host);
+      await submit(panel, 'Change a Vercel domain');
+      await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Settings.');
+      requests = [];
+      await page.locator('#settings').click();
+      await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Domains.');
+      expect(requests[0]!.userGoal).toBe('Change a Vercel domain');
+      expect(requests[0]!.taskContext).toEqual({ stepNumber: 2, previousStep: {
+        action: 'Click Settings.', event: 'trusted_click', status: mode === 'workflow-check' ? 'verified' : 'unverifiable',
+      } });
+      await page.locator('#domains').click();
+      await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Edit domain.');
+      expect(requests[1]!.taskContext).toEqual({ stepNumber: 3, previousStep: {
+        action: 'Click Domains.', event: 'trusted_click', status: 'unverifiable',
+      } });
+      expect(JSON.stringify(requests[1]!.taskContext)).not.toContain('Settings');
+      expect(requests[1]!.userGoal).toBe('Change a Vercel domain');
+      expect((requests[0]!.page as { snapshotId: string }).snapshotId).not.toBe((requests[1]!.page as { snapshotId: string }).snapshotId);
+      await expect(panel.getByRole('status')).toContainText('final suggestion');
+      await panel.screenshot({ path: '/tmp/clickpilot-6a-360.png', fullPage: true });
+      await panel.setViewportSize({ width: 260, height: 1000 });
+      await panel.screenshot({ path: '/tmp/clickpilot-6a-260.png', fullPage: true });
+      expect(await panel.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await page.locator('#edit').click();
+      await page.waitForTimeout(2300);
+      expect(requests).toHaveLength(2);
+      await expect(panel.getByRole('status')).toContainText('has not verified');
+      await panel.getByRole('button', { name: 'Confirm task complete' }).click();
+      await expect(panel.getByRole('status')).toHaveText('Task completion confirmed by you.');
+    } finally { await context.close(); }
+  });
+}
+
+test('MOCK API: final guidance with a verified page change still makes no next request', async () => {
+  const { context, page, panel } = await openAssistant('multistep.html');
+  try {
+    outcome = 'final-changing'; await submit(panel, 'Show Settings');
+    await expect(page.locator('#clickpilot-overlay')).toHaveCount(1);
+    await page.locator('#settings').click();
+    await expect(panel.getByRole('status')).toContainText('step outcome was verified');
+    await expect(panel.getByRole('status')).toContainText('Overall task completion is not verified');
+    expect(requests).toHaveLength(1);
+  } finally { await context.close(); }
+});
+
+for (const mode of ['no-change', 'failed-check']) {
+  test(`MOCK API: ${mode} waits, retries same step, and permits explicit manual continuation`, async () => {
+    const { context, page, panel } = await openAssistant('multistep.html');
+    try {
+      outcome = mode; await submit(panel, 'Change a Vercel domain');
+      await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Do nothing.');
+      await page.locator('#no-change').click();
+      await expect(panel.getByRole('status')).toContainText('No verified progress');
+      expect(requests).toHaveLength(1);
+      await panel.getByRole('button', { name: 'Retry', exact: true }).click();
+      await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Do nothing.');
+      expect((requests[1]!.taskContext as { stepNumber: number }).stepNumber).toBe(1);
+      await page.locator('#no-change').click();
+      await expect(panel.getByRole('status')).toContainText('No verified progress');
+      outcome = 'workflow';
+      await panel.getByRole('button', { name: 'Continue manually' }).click();
+      await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Settings.');
+      expect(requests[2]!.taskContext).toMatchObject({ stepNumber: 2, previousStep: { status: 'user_confirmed' } });
+      await expect(panel.getByRole('status')).toContainText('confirmed by you');
+    } finally { await context.close(); }
+  });
+}
+
+for (const action of ['stop', 'replace', 'consent', 'close', 'tab', 'navigate']) {
+  test(`MOCK API: observation cleanup prevents a follow-up after ${action}`, async () => {
+    const { context, page, panel } = await openAssistant('multistep.html');
+    try {
+      outcome = 'workflow'; await submit(panel, 'Old task');
+      await expect(page.locator('#clickpilot-overlay')).toHaveCount(1);
+      await page.locator('#settings').click();
+      await expect(panel.getByRole('status')).toContainText('Checking the updated page');
+      if (action === 'stop') await panel.getByRole('button', { name: 'Stop', exact: true }).click();
+      if (action === 'replace') { outcome = 'answer'; await submit(panel, 'New goal'); }
+      if (action === 'consent') await panel.getByLabel('Allow this panel').uncheck();
+      if (action === 'close') await panel.close();
+      if (action === 'tab') { const other = await context.newPage(); await other.goto('http://127.0.0.1:4173/second.html'); }
+      if (action === 'navigate') await page.goto('http://127.0.0.1:4173/second.html');
+      await page.waitForTimeout(2300);
+      expect(requests).toHaveLength(action === 'replace' ? 2 : 1);
+      await expect(page.locator('#clickpilot-overlay')).toHaveCount(0);
+      if (action === 'replace') expect(requests[1]!.taskContext).toEqual({ stepNumber: 1, previousStep: null });
+    } finally { await context.close(); }
+  });
+}
+
+
+test('MOCK API: disappearing target check verifies only the step and observes fresh controls', async () => {
+  const { context, page, panel } = await openAssistant('multistep.html');
+  try {
+    outcome = 'hidden-check'; await submit(panel, 'Change a Vercel domain');
+    await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Settings.');
+    await page.evaluate(() => document.getElementById('settings')!.addEventListener('click', (event) => {
+      (event.currentTarget as HTMLElement).hidden = true;
+    }));
+    outcome = 'workflow';
+    await page.locator('#settings').click();
+    await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Domains.');
+    expect(requests[1]!.taskContext).toMatchObject({ previousStep: { status: 'verified' } });
+    await expect(panel.getByRole('status')).toContainText('Previous step: outcome verified');
+  } finally { await context.close(); }
+});
+
+test('MOCK API: an already-expanded target is not verified again just because it was clicked', async () => {
+  const { context, page, panel } = await openAssistant('multistep.html');
+  try {
+    outcome = 'final-changing'; await submit(panel, 'Show Settings');
+    await expect(page.locator('#clickpilot-overlay')).toHaveCount(1);
+    await page.evaluate(() => document.getElementById('settings')!.setAttribute('aria-expanded', 'true'));
+    await page.locator('#settings').click();
+    await page.waitForTimeout(2300);
+    await expect(panel.getByRole('status')).toContainText('has not verified');
+    expect(requests).toHaveLength(1);
+  } finally { await context.close(); }
+});

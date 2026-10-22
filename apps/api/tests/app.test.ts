@@ -6,7 +6,7 @@ import runnable from '../src/index';
 import fixture from './fixtures/valid-request.json';
 
 const path = '/v1/guidance/next';
-const highlight = { kind: 'guidance', targetId: 'el_1', instruction: 'Click Settings yourself.', message: 'You can open Settings here.' };
+const highlight = { kind: 'guidance', nextStep: 'none', targetId: 'el_1', instruction: 'Click Settings yourself.', message: 'You can open Settings here.' };
 function request() { return structuredClone(fixture); }
 function post(value: unknown) { return { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(value) }; }
 async function expectError(response: Response, status: number, code: string) {
@@ -132,7 +132,7 @@ describe('test-only provider boundary', () => {
     const provider = vi.fn(async () => highlight);
     const response = await createApp(provider).request(path, post(original));
     expect(response.status).toBe(200);
-    expect(provider).toHaveBeenCalledWith({ userGoal: 'Find Settings', page: { origin: 'https://example.com' },
+    expect(provider).toHaveBeenCalledWith({ userGoal: 'Find Settings', taskContext: { stepNumber: 1, previousStep: null }, page: { origin: 'https://example.com' },
       elements: [{ id: 'el_1', role: 'button', name: 'Settings', context: 'Main navigation' }] }, expect.any(AbortSignal));
     expect(JSON.stringify(provider.mock.calls)).not.toMatch(/PRIVATE-|fixture-page|fixture-snapshot|rect|viewport/);
     expect(await response.json()).toMatchObject({ sessionId: original.sessionId, requestId: original.requestId, result: highlight });
@@ -173,6 +173,22 @@ describe('test-only provider boundary', () => {
     }
   });
 
+  it('diagnoses model schema and target-membership failures without printing values', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const options = { GUIDANCE_DIAGNOSTICS: 'true' };
+    await expectError(await createApp(async () => ({ ...highlight, nextStep: 'PRIVATE-MARKER' }))
+      .request(path, post(request()), options), 502, 'invalid_provider_response');
+    expect(warn).toHaveBeenLastCalledWith('[ClickPilot guidance validation]', expect.objectContaining({
+      stage: 'assistant_schema', paths: ['nextStep'],
+    }));
+    await expectError(await createApp(async () => ({ ...highlight, targetId: 'el_99' }))
+      .request(path, post(request()), options), 502, 'invalid_provider_response');
+    expect(warn).toHaveBeenLastCalledWith('[ClickPilot guidance validation]', expect.objectContaining({
+      stage: 'target_membership', paths: [],
+    }));
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('PRIVATE-MARKER');
+  });
+
   it.each([
     null, { kind: 'click', targetId: 'el_1' }, { ...highlight, targetId: '#selector' },
     { ...highlight, script: 'document.body.remove()' },
@@ -205,7 +221,7 @@ describe('test-only provider boundary', () => {
 
   it('validates response identity against the originating request', () => {
     const original = GuidanceRequestSchema.parse(request());
-    const response = { protocolVersion: 2, sessionId: original.sessionId, requestId: original.requestId, pageKey: original.page.pageKey, snapshotId: original.page.snapshotId, result: highlight };
+    const response = { protocolVersion: 3, sessionId: original.sessionId, requestId: original.requestId, pageKey: original.page.pageKey, snapshotId: original.page.snapshotId, result: highlight };
     expect(validateGuidanceResponse(response, original, ['el_1'])).not.toBeNull();
     for (const invalid of [{ requestId: 2 }, { sessionId: '7bbf7fc2-9b30-4cf8-9563-66fdacb01d21' }, { pageKey: 'old-page' }, { snapshotId: 'old-snapshot' }]) {
       expect(validateGuidanceResponse({ ...response, ...invalid }, original, ['el_1'])).toBeNull();

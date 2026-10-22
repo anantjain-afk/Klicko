@@ -1,7 +1,8 @@
-import type { GuidanceRequest } from './guidance';
+import type { GuidanceRequest, TaskContext } from './guidance';
 
 export interface ProviderContext {
   userGoal: string;
+  taskContext: TaskContext;
   page: { origin: string };
   elements: { id: string; role: string; name: string; context: string }[];
 }
@@ -35,8 +36,13 @@ export function prepareProviderContext(request: GuidanceRequest): ProviderContex
     || /(?:^|\/)(?:login|signin|sign-in|auth|oauth|password|reset-password|billing|payments?|checkout|bank|medical|health)(?:\/|$)/i.test(path)
     || containsSensitiveText(request.userGoal)) return null;
 
+  const previous = request.taskContext.previousStep;
+  if (previous && containsSensitiveText(previous.action)) return null;
+  const taskContext: TaskContext = { ...request.taskContext, previousStep: previous
+    ? { ...previous, action: cleanText(previous.action) } : null };
+  if (taskContext.previousStep && !taskContext.previousStep.action) return null;
   const elements = eligibleElements(request.elements);
   const userGoal = cleanText(request.userGoal);
   if (!userGoal) return null;
-  return { userGoal, page: { origin: url.origin }, elements };
+  return { userGoal, taskContext, page: { origin: url.origin }, elements };
 }
