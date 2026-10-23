@@ -1,25 +1,27 @@
 import { visibleRect } from '../observer/collect-elements';
+import { reportHighlightFailure } from './diagnostics';
+import { targetHitPoints } from './hit-test-points';
 
 // All positions are current viewport CSS pixels; no snapshot coordinates are reused.
 function targetRect(target: Element): DOMRect | null {
-  if (!(target instanceof HTMLElement) || document.hidden) return null;
+  if (!(target instanceof HTMLElement)) return reportHighlightFailure('unsupported_target');
+  if (document.hidden) return reportHighlightFailure('document_hidden');
+  if (!target.isConnected) return reportHighlightFailure('detached');
   const rect = visibleRect(target, window);
-  if (!rect || target.matches(':disabled, [aria-disabled="true"]')) return null;
+  if (!rect) return reportHighlightFailure('not_visible_or_no_geometry');
+  if (target.matches(':disabled, [aria-disabled="true"]')) return reportHighlightFailure('disabled');
   const viewport = window.visualViewport;
   const left = viewport?.offsetLeft ?? 0;
   const top = viewport?.offsetTop ?? 0;
   const right = left + (viewport?.width ?? innerWidth);
   const bottom = top + (viewport?.height ?? innerHeight);
   // Partial/clipped controls are removed rather than decorated misleadingly.
-  if (rect.left < left + 4 || rect.top < top + 4 || rect.right > right - 4 || rect.bottom > bottom - 4) return null;
-  const points: [number, number][] = [
-    [rect.left + rect.width / 2, rect.top + rect.height / 2],
-    [rect.left + 2, rect.top + 2], [rect.right - 2, rect.top + 2],
-    [rect.left + 2, rect.bottom - 2], [rect.right - 2, rect.bottom - 2],
-  ];
-  for (const [x, y] of points) {
+  if (rect.left < left + 4 || rect.top < top + 4 || rect.right > right - 4 || rect.bottom > bottom - 4) return reportHighlightFailure('outside_viewport');
+  const points = targetHitPoints(rect, getComputedStyle(target), target.offsetWidth, target.offsetHeight);
+  if (!points) return reportHighlightFailure('unsupported_radius');
+  for (const { name, x, y } of points) {
     const hit = document.elementFromPoint(x, y);
-    if (!hit || (hit !== target && !target.contains(hit))) return null;
+    if (!hit || (hit !== target && !target.contains(hit))) return reportHighlightFailure('hit_test_failed', name);
   }
   return rect;
 }
@@ -30,7 +32,8 @@ export function showOverlay(
   isCurrent: () => boolean,
   onInvalidated: () => void,
 ): (() => void) | null {
-  if (!isCurrent() || !targetRect(target)) return null;
+  if (!isCurrent()) return reportHighlightFailure('identity_mismatch');
+  if (!targetRect(target)) return null;
 
   const host = document.createElement('div');
   host.id = 'clickpilot-overlay';
@@ -83,7 +86,8 @@ export function showOverlay(
 
   function draw() {
     if (stopped) return;
-    const rect = isCurrent() && host.isConnected ? targetRect(target) : null;
+    const rect = !isCurrent() ? reportHighlightFailure('identity_mismatch')
+      : !host.isConnected ? reportHighlightFailure('overlay_removed') : targetRect(target);
     if (!rect) { invalidate(); return; }
     const viewport = window.visualViewport;
     const left = viewport?.offsetLeft ?? 0;
@@ -93,6 +97,7 @@ export function showOverlay(
     highlight.style.cssText = `left:${rect.x - 4}px;top:${rect.y - 4}px;width:${rect.width + 8}px;height:${rect.height + 8}px`;
     const drawn = highlight.getBoundingClientRect();
     if (Math.abs(drawn.x - (rect.x - 4)) > 1 || Math.abs(drawn.y - (rect.y - 4)) > 1) {
+      reportHighlightFailure('position_drift');
       invalidate(); return;
     }
     tooltip.style.maxWidth = `${Math.min(280, width - 24)}px`;
@@ -100,7 +105,7 @@ export function showOverlay(
     const x = Math.max(left + 12, Math.min(rect.x + rect.width / 2 - box.width / 2, left + width - box.width - 12));
     const below = rect.bottom + 32 + box.height <= top + height - 12;
     const y = below ? rect.bottom + 32 : rect.top - box.height - 32;
-    if (y < top + 12) { invalidate(); return; }
+    if (y < top + 12) { reportHighlightFailure('tooltip_no_space'); invalidate(); return; }
     tooltip.style.left = `${x}px`;
     tooltip.style.top = `${y}px`;
     const tipX = rect.x + rect.width / 2;

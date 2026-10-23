@@ -4,6 +4,7 @@ import { OBSERVATION_MS } from '@clickpilot/shared/guidance';
 import { eligibleElements } from '@clickpilot/shared/privacy';
 import { visibleRect, collectElements } from '../src/features/observer/collect-elements';
 import { showOverlay } from '../src/features/overlay/renderer';
+import { reportHighlightFailure } from '../src/features/overlay/diagnostics';
 import { isMockFixtureUrl } from '../src/features/session/mock';
 import { isContentRequest, type OverlayResponse, type PageSnapshot, type PageInvalidation } from '../src/lib/messages';
 
@@ -128,6 +129,8 @@ export default defineContentScript({
             document.addEventListener('click', onClick, true);
             removeClickListener = () => document.removeEventListener('click', onClick, true);
           }
+        } else {
+          reportHighlightFailure(target ? 'identity_mismatch' : 'registry_missing');
         }
         sendResponse({ type: 'OVERLAY_RESULT', ok: !!target && isCurrent() && removeOverlay !== null });
         return;

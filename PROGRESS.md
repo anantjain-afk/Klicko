@@ -1,6 +1,6 @@
 # ClickPilot progress
 
-Updated: 22 October 2026.
+Updated: 23 October 2026.
 
 ## Current status
 
@@ -13,7 +13,8 @@ Milestone 3: VERIFIED by the user in Chrome on 21 October 2026.
 Milestone 4: AWAITING USER VERIFICATION — explicitly approved by the user on 21 October 2026.
 Milestone 5A: VERIFIED by the user on 22 October 2026.
 Milestone 5B: VERIFIED by the user on 22 October 2026. Its relevant branch handoff was authorized. Milestone 6A was subsequently approved and implemented as recorded below; 6B and deployment remain unapproved.
-Milestone 6A: implementation approved on 22 October 2026 after the continuation clarification. Implemented; AWAITING USER VERIFICATION in Chrome. Final evidence and limitations are recorded below.
+Milestone 6A: implementation approved on 22 October 2026 after the continuation clarification. **VERIFIED by the user on 23 October 2026**, including the shared highlighting correction. Evidence and limitations are recorded below.
+Shared highlighting correction: approved and **VERIFIED by the user on 23 October 2026**. The user authorized committing and pushing these changes to `milestone-6A`. Milestone 6B remains unapproved and untouched.
 
 The user confirmed milestone 1 in Chrome and explicitly authorized milestone 2 on 21 October 2026. The user then reported that inspection failed on the localhost fixture in both Brave and Chrome. A focused milestone 2 fix is implemented and automated checks pass. The user subsequently said “ok let's continue with milestone 3,” explicitly authorizing that scope. Work proceeded on milestone 3; no manual milestone 2 pass is inferred from that authorization. Verify inspection and overlays together in Chrome (and Brave if used).
 
@@ -452,3 +453,52 @@ The API now sends that provider-facing schema and exposes optional local `GUIDAN
 | `corepack pnpm exec playwright test` | First attempt could not bind the local fixture server in the sandbox. Escalated run: 35 passed, 1 failed, 33 skipped because the user's existing local Worker occupies 127.0.0.1:8787, which the mock API suite also binds. The existing Worker was left running; the prior 6A full suite had passed 69/69 before this backend-only fix. |
 
 Manual Chrome verification: restart the local Worker so it loads the changed API code, rebuild/reload the unpacked extension if needed, and repeat Settings → Domains → Edit domain on `http://127.0.0.1:4173/multistep.html`. Check that each suggestion highlights the currently visible control, only user clicks advance, and the original goal remains in the step 2 request. The full numbered 6A checks above remain applicable. If a failure recurs, enable the optional diagnostics and inspect only stage/path/code in the local Worker console. Stop after user verification; do not proceed to 6B.
+
+## Shared highlighting correction — 23 October 2026
+
+Status: **VERIFIED by the user on 23 October 2026**. The user explicitly approved the investigated fix, requested asymmetric-radius support and genuine partial-occlusion checks, and subsequently confirmed: “i have verified everything”. They reported successful identification of the visible buttons and authorized committing and pushing these changes to `milestone-6A`. This is a scoped correction before 6B; no 6B work, deployment or publication is authorized.
+
+### Confirmed cause and implementation
+
+- The live Excalidraw Hand button had a 36×36px box and an 8px border radius. Its center correctly hit a nested SVG path. The old bottom-right probe, 2px from the bounding-box edges, fell outside the rounded clickable shape and hit a toolbar ancestor instead. `targetRect` rejected that hit before creating an overlay. The button was connected, visible, enabled, in view and untransformed. The point's `elementsFromPoint` stack did not contain the button; it was outside the button's shape rather than underneath a covering control.
+- Both Manual Highlights and AI guidance use `HIGHLIGHT_ELEMENT` → `SHOW_OVERLAY` → `showOverlay`. The existing production build returned `OVERLAY_RESULT { ok: false }` for both message variants during investigation. The registry/selection was valid; retrying inspection could not correct the corner geometry.
+- Added `src/features/overlay/hit-test-points.ts` alongside the existing renderer. It resolves all four CSS corner radii independently, including px/percentages, elliptical radii and CSS overlap normalization, then maps them into the current viewport box. It samples just inside each corner's ellipse and keeps the center plus four probes near the straight edges. Every probe must hit the target or its descendants; unrelated hits, including ancestors, still reject. It does not accept a covered target merely because some other sample is usable.
+- The renderer retains live per-draw connectivity, visibility, disabled-state, viewport, identity and positioning checks. Nested SVG descendants remain valid. Tests also verify a nested shadow icon, rejection of an unrelated shadow cover, positive axis scaling, conservative rejection of a rotated fixture, and loss of pointer interaction. No shadow-tree extraction support was added. Overlay isolation, pointer transparency, text-only instructions, cancellation and snapshot-scoped cleanup remain in place.
+- Added development-only diagnostics in `src/features/overlay/diagnostics.ts`, called by the renderer and content-script registry check. They contain fixed failure/probe codes only: no element objects, labels, text, values, URLs, selectors, instructions or identity tokens. A failed attempt/draw stops after logging once. Production builds omit the diagnostic logger.
+- Replaced the exhausted-refresh message and related shared inspection/tab/navigation messages with wording appropriate to websites. The exhausted-refresh message now asks the user to make the control visible and unobstructed before Retry. Fixture-specific selection text remains confined to Mock mode.
+- Added `tests/fixtures/targets.html`, geometry/diagnostic unit tests, and Manual/AI browser regressions for rounded/asymmetric/elliptical/overlapping/one-large-corner/pill/square buttons, nested SVG clicks, full covers, edge/corner covers with an exposed center, detached nodes before/during highlighting, replacement while an AI reply is pending, one-refresh recovery and Stop. The AI test mock now binds an ephemeral local port, with browser-context routing from the unchanged extension endpoint, avoiding the user's already-running Worker on port 8787. No dependency, permission, backend behavior or extension endpoint changed.
+
+### Actual verification evidence
+
+| Exact command/check | Result |
+|---|---|
+| `corepack pnpm typecheck` | Exit 0; shared/API/extension. Final output: `/tmp/clickpilot-highlight-typecheck.log` |
+| `corepack pnpm lint` | Exit 0 |
+| `corepack pnpm test` | Exit 0; **64 API + 61 extension unit tests passed** |
+| `WRANGLER_LOG_PATH=/tmp/clickpilot-highlight-wrangler.log corepack pnpm test:e2e` | Exit 0; extension production build and API Worker **dry-run** build passed, followed by **89/89 Chromium tests passed (2.2 minutes)**. Output: `/tmp/clickpilot-highlight-e2e.log`. No deployment or Gemini calls |
+| `corepack pnpm --filter @clickpilot/extension exec wxt build -b chrome --mode development` | Exit 0; standalone diagnostic build at `apps/extension/.output/chrome-mv3-dev`; production output remains at `apps/extension/.output/chrome-mv3` |
+| Python production manifest/client inspection | Passed: exactly `activeTab`, `scripting`, `sidePanel`; unchanged loopback host; no static content scripts; highlight diagnostic logger and provider secret configuration/endpoint absent from production client JS |
+| Python production/development comparison | Passed: diagnostic console marker absent in production, present in development |
+| Isolated Chromium development-build smoke on the local fixture | Exit 0; an edge cover reports only `{ reason: 'hit_test_failed', probe: 'top_edge' }`; a corner cover reports only the corresponding `top_left` code. Exactly one diagnostic per failed attempt/invalidation, including subsequent frames |
+| Isolated Chromium production-build smoke on live Excalidraw | Exit 0; actual Manual UI highlights Hand, outline aligns, overlay survives repeated draws, Manual Stop removes it; shared guidance message returns `ok: true`, remains pointer-transparent and cleans up with its own snapshot. **Zero Gemini requests and zero webpage-control clicks** |
+| `git diff --check` | Exit 0 |
+
+The existing fixture server and API Worker were left running. The browser mock server closed after the suite; the original Worker still owned port 8787 afterward. Headless checks open panel HTML in a tab; actual Chrome side-panel layout/lifecycle and live Gemini target selection remain manual verification work.
+
+Intermediate evidence: the first new unit run passed 59 and failed two because a test attempted to copy a CSSStyleDeclaration's read-only indexed properties. Removing that test-setup assignment resolved both failures; no production fix was needed. The initial production build completed but Wrangler could not write its default log outside the sandbox; the final full build used the explicit `/tmp` log path and completed without that warning. The first live post-fix smoke confirmed both highlights but its final cleanup assertion used the Manual panel's old snapshot after a diagnostic independently created a newer snapshot. The old cleanup correctly left the newer overlay intact. The corrected smoke checked Manual Stop before creating the diagnostic snapshot and then cleared the latter with its own identity; all checks passed without changing cleanup protections. An earlier focused browser run also passed all 18 selected tests before the last asymmetric/shadow cases were added; the final 89-test run above includes them.
+
+### Manual Chrome verification — confirmed by the user on 23 October 2026
+
+1. At `chrome://extensions`, reload the unpacked extension from `apps/extension/.output/chrome-mv3`. Open `https://excalidraw.com`, activate ClickPilot using its toolbar icon, select **Manual highlights**, and inspect. Highlight **Hand (panning tool)**. Expect an aligned outline, arrow and tooltip, with the panel waiting for you instead of reporting unavailable. The webpage must not select a tool on its own.
+2. Resize the panel/window and change browser zoom while the Hand target remains in view. Expect alignment or conservative removal if the target becomes clipped/unavailable. Click Hand yourself; expect normal tool selection without overlay interception. Press **Stop**; expect no decoration. Misalignment, blocked clicks, unsolicited actions or persistent decoration fail verification.
+3. With the usual local API Worker running (or start `corepack pnpm dev:api` if needed), select **AI assistant**, give the existing disclosure/consent, and ask **“How can I select the hand?”**. When Gemini selects Hand, expect the same successful highlight and no exhausted-refresh/fixture message. Click only when you choose. Stop, switch tabs, navigate and close the panel in separate runs; expect cleanup and no late highlight. Real model selection is not claimed by the mocked tests.
+4. Use the existing fixture server, or run `python3 -m http.server 4173 --directory tests/fixtures`. Open `http://127.0.0.1:4173/targets.html`, activate ClickPilot, inspect and highlight **Primary target**. Try **Asymmetric ellipses**, **One large corner**, **Overlapping asymmetric radii** and **Pill**. Expect a correctly anchored highlight and normal user clicks. Choose **Rounded** before the cover checks.
+5. While Primary target is highlighted, click **Cover top edge** and **Cover rounded corner** in separate runs, uncovering between them. Its center remains exposed, but the overlay must clear. Attempting to highlight while covered must fail; **Uncover target** must allow a highlight again. Repeat a full cover. Click **Replace target node**: old-list highlighting must fail, and **Inspect this page** must recover with the replacement. Repeat Stop and panel-close checks. Any cover accepted at these tested locations, stale decoration or failure to recover fails verification.
+6. Optional diagnostics: load `apps/extension/.output/chrome-mv3-dev` instead of the production build, open the page's DevTools console, and repeat an edge/corner cover. Filter for `[ClickPilot highlight]`. Expect only a fixed reason/probe record once for the failure; no DOM objects, labels, page text, values or instructions. Return to the production build afterward. In both builds inspect page, panel and extension-worker consoles for unexpected errors.
+
+### Remaining limits and stop gate
+
+- Hit testing remains a conservative sample of nine positions, not a pixel-by-pixel proof of zero occlusion; a tiny cover between probes may be missed. Edge/corner regression patches deliberately leave the center available and still reject. Arbitrary rotations/skews, unresolved `calc()`/other radius expressions, unusual clipping/corner shapes and heavily transformed layouts may still reject safely. No new support for iframe/canvas/shadow-tree targets is claimed.
+- No real Gemini request was made by the agent for this correction. Automated AI-path tests use the isolated mock; the live smoke exercised the shared guidance rendering message without a provider. The user subsequently confirmed completion of the supplied Chrome verification and approved the changes.
+
+**STOP: VERIFIED.** The user authorized committing and pushing this correction to `milestone-6A`. Milestone 6B, deployment and publication remain unapproved. This verification supersedes the earlier pending-verification entries for 6A; it does not change the separate historical verification status of earlier milestones.

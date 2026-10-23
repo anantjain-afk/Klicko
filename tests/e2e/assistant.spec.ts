@@ -7,6 +7,7 @@ test.describe.configure({ mode: 'serial' });
 let outcome = 'guidance';
 let requests: Record<string, unknown>[] = [];
 let release: (() => void) | undefined;
+let mockPort: number;
 const server = createServer(async (request, response) => {
   let text = '';
   for await (const chunk of request) text += String(chunk);
@@ -43,12 +44,21 @@ const server = createServer(async (request, response) => {
     requestId: kind === 'stale' ? body.requestId + 1 : body.requestId,
     pageKey: body.page.pageKey, snapshotId: body.page.snapshotId, result }));
 });
-test.beforeAll(async () => { await new Promise<void>((resolve) => server.listen(8787, '127.0.0.1', resolve)); });
+test.beforeAll(async () => {
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  if (!address || typeof address === 'string') throw new Error('Mock API did not bind a TCP port.');
+  mockPort = address.port;
+});
 test.afterAll(async () => { release?.(); server.closeAllConnections(); await new Promise<void>((resolve) => server.close(() => resolve())); });
 test.beforeEach(() => { requests = []; outcome = 'guidance'; release = undefined; });
 
 async function openAssistant(fixture = 'guidance.html') {
   const extension = await launchExtension();
+  // Route extension-worker fetches to an isolated mock, even if a real local Worker is running.
+  await extension.context.route('http://127.0.0.1:8787/**', (route) => route.continue({
+    url: route.request().url().replace('127.0.0.1:8787', `127.0.0.1:${mockPort}`),
+  }));
   const page = await extension.context.newPage();
   await page.goto(`http://127.0.0.1:4173/${fixture}?private=PRIVATE-QUERY#PRIVATE-FRAGMENT`);
   await activateToolbar(page, extension.extensionId);
@@ -291,3 +301,56 @@ test('MOCK API: an already-expanded target is not verified again just because it
     expect(requests).toHaveLength(1);
   } finally { await context.close(); }
 });
+
+test('MOCK API: rounded nested SVG highlights and observes the real user click', async () => {
+  const { context, page, panel } = await openAssistant('targets.html');
+  try {
+    await submit(panel);
+    await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Primary target.');
+    await expect(page.locator('#counter')).toHaveText('Clicks: 0');
+    await page.locator('#target svg path').click();
+    await expect(page.locator('#counter')).toHaveText('Clicks: 1');
+    await expect(panel.getByRole('status')).toContainText('Click observed');
+    await expect(page.locator('#clickpilot-overlay')).toHaveCount(0);
+    expect(requests).toHaveLength(1);
+  } finally { await context.close(); }
+});
+
+test('MOCK API: detached selection refreshes once and uses the re-rendered SVG button', async () => {
+  const { context, page, panel } = await openAssistant('targets.html');
+  try {
+    outcome = 'delayed-guidance';
+    await submit(panel);
+    await expect.poll(() => requests.length).toBe(1);
+    const finish = release!;
+    await page.locator('#replace').click();
+    outcome = 'guidance';
+    finish();
+    await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Primary target.');
+    expect(requests).toHaveLength(2);
+    expect((requests[0]!.page as { snapshotId: string }).snapshotId)
+      .not.toBe((requests[1]!.page as { snapshotId: string }).snapshotId);
+    await expect(page.locator('#counter')).toHaveText('Clicks: 0');
+    await panel.getByRole('button', { name: 'Stop', exact: true }).click();
+    await expect(page.locator('#clickpilot-overlay')).toHaveCount(0);
+  } finally { release?.(); await context.close(); }
+});
+
+for (const side of ['full', 'top', 'corner']) {
+  test(`MOCK API: ${side} coverage survives one refresh and pauses with website recovery wording`, async () => {
+    const { context, page, panel } = await openAssistant('targets.html');
+    try {
+      await page.locator(`#cover-${side}`).click();
+      await submit(panel);
+      await expect(panel.getByRole('status')).toContainText('after one refresh');
+      await expect(panel.getByRole('status')).toContainText('visible and unobstructed');
+      await expect(panel.getByRole('status')).not.toContainText('fixture');
+      await expect(page.locator('#clickpilot-overlay')).toHaveCount(0);
+      expect(requests).toHaveLength(2);
+      await page.locator('#uncover').click();
+      await panel.getByRole('button', { name: 'Retry', exact: true }).click();
+      await expect(page.locator('#clickpilot-overlay')).toHaveCount(1);
+      expect(requests).toHaveLength(3);
+    } finally { await context.close(); }
+  });
+}

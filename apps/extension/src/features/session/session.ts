@@ -32,10 +32,10 @@ interface ActiveRun extends GuidanceIdentity {
 }
 
 const INSPECTION_ERRORS = {
-  'no-tab': 'No active tab was found. Open the fixture and try again.',
-  unsupported: 'This page cannot be inspected. Open the local guidance fixture.',
+  'no-tab': 'No active tab was found. Open a website and try again.',
+  unsupported: 'This page cannot be inspected. Open a regular website.',
   reactivate: 'Click the ClickPilot toolbar icon on this tab to grant access, then Retry.',
-  changed: 'The page changed during inspection. Return to the fixture and Retry.',
+  changed: 'The page changed during inspection. Retry on the current page.',
 };
 
 // The panel owns one active run. Async replies can change state only while
@@ -141,7 +141,7 @@ function createSession(client: SessionClient, onChange: (state: GuidanceState) =
         await client.clear(response.tabId, response.snapshot.snapshotId);
         if (active !== run) return;
       }
-      pause('The target stayed unavailable after one refresh. Restore the fixture and Retry.');
+      pause('The target stayed unavailable after one refresh of the page inspection. Make sure it is visible and unobstructed, then Retry.');
     } catch (error) {
       if (active === run) {
         cancel(); transition({ kind: 'error', message: live && error instanceof Error && error.message.length <= 240
@@ -155,7 +155,7 @@ function createSession(client: SessionClient, onChange: (state: GuidanceState) =
     if (!run?.snapshot || run.tabId !== tabId) return;
     if (!isPageInvalidation(message) && !isGuidanceClick(message) && !isActionObservation(message)) return;
     if (message.pageKey !== run.snapshot.pageKey || message.snapshotId !== run.snapshot.snapshotId) return;
-    if (message.type === 'SNAPSHOT_INVALIDATED') { pause('The page changed or the snapshot expired. Return to the fixture and Retry.'); return; }
+    if (message.type === 'SNAPSHOT_INVALIDATED') { pause('The page changed or the snapshot expired. Retry on the current page.'); return; }
     if (message.targetId !== run.targetId) return;
     if (message.type === 'OVERLAY_INVALIDATED') {
       if (state.kind === 'waiting') pause('The target is no longer visible or available. Restore it and Retry.');

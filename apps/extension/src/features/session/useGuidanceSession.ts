@@ -59,12 +59,12 @@ export function useGuidanceSession(live: boolean) {
     const onTabActivated = () => {
       if (session.isActive() || trackedTabId !== undefined) {
         trackedTabId = undefined;
-        session.pause('Tab changed. Activate the fixture tab with the toolbar icon, then Retry.');
+        session.pause('Tab changed. Activate the tab you want to use with the ClickPilot toolbar icon, then Retry.');
       }
     };
     const onTabUpdated = (tabId: number, change: { url?: string; status?: string }) => {
       if (tabId === trackedTabId && (change.url || change.status === 'loading')) {
-        session.pause('Page changed. Return to the fixture and Retry.');
+        session.pause('Page changed. Retry on the current page.');
       }
     };
     const onPageHide = () => { session.dispose(); port.disconnect(); };

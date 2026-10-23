@@ -2,10 +2,10 @@ import { test, expect, type Page } from '@playwright/test';
 import { activateToolbar, launchExtension, panelMessage } from './extension';
 import type { PageSnapshot } from '../../apps/extension/src/lib/messages';
 
-async function openFixture() {
+async function openFixture(fixture = 'overlay.html') {
   const extension = await launchExtension();
   const page = await extension.context.newPage();
-  await page.goto('http://127.0.0.1:4173/overlay.html');
+  await page.goto(`http://127.0.0.1:4173/${fixture}`);
   await activateToolbar(page, extension.extensionId);
   const panel = await extension.context.newPage();
   await panel.goto(`chrome-extension://${extension.extensionId}/sidepanel.html`);
@@ -251,5 +251,108 @@ test('20 — panel disconnection removes decoration and registry', async () => {
     await reopened.goto(`chrome-extension://${extensionId}/sidepanel.html`);
     await page.bringToFront();
     expect(await panelMessage(reopened, request)).toEqual({ type: 'OVERLAY_RESULT', ok: false });
+  } finally { await context.close(); }
+});
+
+for (const shape of ['rounded', 'asymmetric', 'one-corner', 'overlapping', 'pill', 'square']) {
+  test(`rounded SVG regression: manual highlights ${shape} controls and remains pointer-transparent`, async () => {
+    const { context, page, panel } = await openFixture('targets.html');
+    try {
+      await page.getByLabel('Shape').selectOption(shape);
+      if (shape === 'rounded') {
+        expect(await page.locator('#target').evaluate((target) => {
+          const r = target.getBoundingClientRect();
+          return target.contains(document.elementFromPoint(r.right - 2, r.bottom - 2));
+        })).toBe(false);
+      }
+      await highlight(panel);
+      await expectAligned(page);
+      await expect(page.locator('#counter')).toHaveText('Clicks: 0');
+      // Repeated draws must not hit our own host/shadow decorations.
+      await page.waitForTimeout(150);
+      await expect(page.locator('#clickpilot-overlay')).toHaveCount(1);
+      await page.locator('#target svg path').click();
+      await expect(page.locator('#counter')).toHaveText('Clicks: 1');
+    } finally { await context.close(); }
+  });
+}
+
+for (const side of ['full', 'top', 'right', 'bottom', 'left', 'corner']) {
+  test(`rounded SVG regression: rejects ${side} occlusion before drawing and during guidance`, async () => {
+    const { context, page, panel } = await openFixture('targets.html');
+    try {
+      await page.locator(`#cover-${side}`).click();
+      // Only the full cover hides the center; edge/corner patches must also fail.
+      if (side !== 'full') {
+        expect(await page.locator('#target').evaluate((target) => {
+          const r = target.getBoundingClientRect();
+          return target.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
+        })).toBe(true);
+      }
+      await panel.getByRole('button', { name: /Highlight .*Primary target/ }).click();
+      await expect(panel.getByRole('status')).toContainText('unavailable');
+      await expect(page.locator('#clickpilot-overlay')).toHaveCount(0);
+      await page.locator('#uncover').click();
+      await highlight(panel);
+      await page.locator(`#cover-${side}`).click();
+      await expect(page.locator('#clickpilot-overlay')).toHaveCount(0);
+      await expect(panel.getByRole('status')).toContainText('Highlight removed');
+    } finally { await context.close(); }
+  });
+}
+
+test('rounded SVG regression: replacement never reuses detached references, and reinspection recovers', async () => {
+  const { context, page, panel } = await openFixture('targets.html');
+  try {
+    await page.locator('#replace').click();
+    await panel.getByRole('button', { name: /Highlight .*Primary target/ }).click();
+    await expect(panel.getByRole('status')).toContainText('unavailable');
+    await expect(page.locator('#clickpilot-overlay')).toHaveCount(0);
+    await panel.getByRole('button', { name: 'Inspect this page' }).click();
+    await highlight(panel);
+    await page.locator('#replace').click();
+    await expect(page.locator('#clickpilot-overlay')).toHaveCount(0);
+    await expect(panel.getByRole('status')).toContainText('Highlight removed');
+    await panel.getByRole('button', { name: 'Inspect this page' }).click();
+    await highlight(panel);
+    await expectAligned(page);
+  } finally { await context.close(); }
+});
+
+test('rounded SVG regression: follows positive axis scaling and rejects a non-interactive target', async () => {
+  const { context, page, panel } = await openFixture('targets.html');
+  try {
+    await page.getByLabel('Shape').selectOption('asymmetric');
+    await page.locator('#toolbar').evaluate((toolbar) => { toolbar.style.transform = 'scale(1.25, 0.8)'; });
+    await highlight(panel);
+    await expectAligned(page);
+    await page.locator('#target').evaluate((target) => { target.style.transform = 'rotate(35deg)'; });
+    await expect(page.locator('#clickpilot-overlay')).toHaveCount(0);
+    await page.locator('#target').evaluate((target) => { target.style.transform = ''; });
+    await highlight(panel);
+    await page.locator('#target').evaluate((target) => { target.style.pointerEvents = 'none'; });
+    await expect(page.locator('#clickpilot-overlay')).toHaveCount(0);
+    await expect(panel.getByRole('status')).toContainText('Highlight removed');
+  } finally { await context.close(); }
+});
+
+test('rounded SVG regression: nested shadow icons are accepted but an unrelated shadow cover is rejected', async () => {
+  const { context, page, panel } = await openFixture('targets.html');
+  try {
+    await page.locator('#target').evaluate((target) => {
+      const icon = document.createElement('span');
+      const root = icon.attachShadow({ mode: 'open' });
+      root.innerHTML = '<svg viewBox="0 0 20 20" style="width:20px;height:20px"><path d="M0 0H20V20H0Z" /></svg>';
+      target.replaceChildren(icon);
+    });
+    await highlight(panel);
+    await page.locator('#target path').click();
+    await expect(page.locator('#counter')).toHaveText('Clicks: 1');
+    await page.locator('#cover').evaluate((cover) => {
+      cover.attachShadow({ mode: 'open' }).innerHTML = '<div style="width:100%;height:100%">Cover</div>';
+    });
+    await page.locator('#cover-full').click();
+    await expect(page.locator('#clickpilot-overlay')).toHaveCount(0);
+    await expect(panel.getByRole('status')).toContainText('Highlight removed');
   } finally { await context.close(); }
 });
