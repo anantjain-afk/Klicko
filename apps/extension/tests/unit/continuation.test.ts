@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { MAX_STEPS, type TaskContext } from '@clickpilot/shared/guidance';
+import { MAX_STEPS, OBSERVATION_MAX_MS, OBSERVATION_TIMEOUT_GRACE_MS, type TaskContext } from '@clickpilot/shared/guidance';
 import { createAssistantSession, type GuidanceState, type SessionClient } from '../../src/features/session/session';
 import type { GuidanceIdentity, PageSnapshot } from '../../src/lib/messages';
 
@@ -155,7 +155,7 @@ describe('bounded AI continuation', () => {
     vi.useFakeTimers();
     const { session, states, client, click } = setup();
     await session.start('Task'); click();
-    await vi.advanceTimersByTimeAsync(3501);
+    await vi.advanceTimersByTimeAsync(OBSERVATION_MAX_MS + OBSERVATION_TIMEOUT_GRACE_MS + 1);
     expect(states.at(-1)).toMatchObject({ kind: 'recovery', message: expect.stringContaining('timed out') });
     expect(client.ask).toHaveBeenCalledOnce();
     session.stop(); await vi.advanceTimersByTimeAsync(10_000);

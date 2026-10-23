@@ -356,3 +356,17 @@ test('rounded SVG regression: nested shadow icons are accepted but an unrelated 
     await expect(panel.getByRole('status')).toContainText('Highlight removed');
   } finally { await context.close(); }
 });
+
+test('manual popup reinspection includes portal roles beyond the cap and invalidates closed menus', async () => {
+  const { context, page, panel } = await openFixture('popup.html?crowded&preexisting');
+  try {
+    await page.locator('#account').click();
+    await panel.getByRole('button', { name: 'Inspect this page' }).click();
+    await expect(panel.getByRole('heading', { name: 'Visible controls (150)' })).toBeVisible();
+    for (const name of ['Rename', 'Pin', 'Plugins', 'Switch account']) await highlight(panel, name);
+    await expect(page.locator('#counter')).toHaveText('Actions: 0');
+    await page.locator('#close').click();
+    await expect(page.locator('#clickpilot-overlay')).toHaveCount(0);
+    await expect(panel.getByRole('status')).toContainText('Highlight removed');
+  } finally { await context.close(); }
+});

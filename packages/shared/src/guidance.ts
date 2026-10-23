@@ -3,7 +3,9 @@ import { z } from 'zod';
 export const MAX_REQUEST_BYTES = 64 * 1024;
 export const MAX_ELEMENTS = 150;
 export const MAX_STEPS = 20;
-export const OBSERVATION_MS = 2000;
+export const OBSERVATION_SETTLE_MS = 400;
+export const OBSERVATION_MAX_MS = 5000;
+export const OBSERVATION_TIMEOUT_GRACE_MS = 1500;
 export const VerificationStatusSchema = z.enum(['pending', 'verified', 'not_verified', 'unverifiable', 'user_confirmed']);
 export const TaskContextSchema = z.strictObject({
   stepNumber: z.number().int().min(1).max(MAX_STEPS),
@@ -21,7 +23,7 @@ export type ExpectedOutcome = z.infer<typeof ExpectedOutcomeSchema>;
 const identityId = z.string().min(1).max(80).regex(/^[a-zA-Z0-9_-]+$/);
 const targetId = z.string().regex(/^el_\d{1,3}$/);
 const shortText = z.string().trim().min(1).max(240);
-const role = z.enum(['button', 'link', 'checkbox', 'radio', 'tab', 'menuitem', 'switch', 'combobox', 'textbox']);
+const role = z.enum(['button', 'link', 'checkbox', 'radio', 'tab', 'menuitem', 'menuitemcheckbox', 'menuitemradio', 'option', 'switch', 'combobox', 'textbox']);
 
 export const GuidanceRequestSchema = z.strictObject({
   protocolVersion: z.literal(3),

@@ -4,6 +4,8 @@ Updated: 23 October 2026.
 
 ## Current status
 
+Dynamic popup observation correction: approved on 23 October 2026; implementation is **AWAITING USER VERIFICATION**. No 6B work is authorized.
+
 Planning: REVIEWED — user approved starting milestone 1.
 
 Milestone 1: VERIFIED by user.
@@ -502,3 +504,52 @@ Intermediate evidence: the first new unit run passed 59 and failed two because a
 - No real Gemini request was made by the agent for this correction. Automated AI-path tests use the isolated mock; the live smoke exercised the shared guidance rendering message without a provider. The user subsequently confirmed completion of the supplied Chrome verification and approved the changes.
 
 **STOP: VERIFIED.** The user authorized committing and pushing this correction to `milestone-6A`. Milestone 6B, deployment and publication remain unapproved. This verification supersedes the earlier pending-verification entries for 6A; it does not change the separate historical verification status of earlier milestones.
+
+
+## Dynamic popup observation correction — 23 October 2026
+
+Status: **AWAITING USER VERIFICATION**. The user approved the scoped correction, including stable snapshot identities, the 150-control limit, and named settling/timeout constants. No 6B work, commit, push, deployment or publication was performed.
+
+### Implementation and safeguards
+
+- Investigation with the actual extractor in isolated Chromium confirmed missing `menuitemcheckbox`, `menuitemradio` and `option` roles, omission of late portal menus after the first 150 background controls, and a menu appearing after the old fixed two-second sample. Portals and hidden-to-visible controls already worked when eligible and within the cap. The signed-in ChatGPT/YouTube DOM was not inspected; no claim is made that one particular defect explains every live-site instance.
+- Extended extraction and the shared strict request schema with those roles. Non-native semantic menu options are eligible; native select options are not independently highlighted. The same contenteditable, sensitive-input, label/value privacy, hidden/inert, geometry and viewport exclusions remain. Disabled controls retain their Manual disabled flag and remain excluded from provider context and actionable change detection.
+- Visible popup/menu/listbox/dialog/popover controls receive first access to the existing 150 slots; remaining slots are filled with ordinary controls in document order. There is no separate popup-only inventory. IDs are assigned after ordering, once per snapshot, to exact Element references. Temporary observation collections do not mutate the retained registry. Old snapshot IDs do not silently resolve replacement elements.
+- Added `apps/extension/src/features/observer/observe-action.ts`, reusing extraction and `eligibleElements`. It combines coalesced mutation notifications with bounded 100ms resampling for CSS-only changes. Only changes to eligible controls or expanded state reset settling; unrelated prose mutations do not. Running animations affecting eligible controls delay settling. Equivalent re-renders/reordering do not fabricate progress; duplicate control counts remain significant.
+- Named shared constants: `OBSERVATION_SETTLE_MS = 400`, `OBSERVATION_MAX_MS = 5000`, `OBSERVATION_TIMEOUT_GRACE_MS = 1500`. The controller waits for the maximum plus grace. The content observer takes a fresh baseline rather than the old inspection inventory; trusted pointer-down/Enter/Space preparation also handles menus opening before click. Preparation alone never advances guidance: a matching trusted click is still required. Prepared baselines expire after the named `ACTION_BASELINE_MAX_AGE_MS = 1500`.
+- Each attempt reports once and disconnects its MutationObserver/timers. Stop, replacement, consent withdrawal, page/tab changes, panel closure, snapshot invalidation and context disposal retain existing cancellation and identity guards. Live-target visibility, hit testing, overlay isolation and pointer transparency were not relaxed.
+- A settled menu/control change without a declared outcome remains `unverifiable`, not verified success. Explicit checks still determine `verified`/`not_verified`; failed checks pause. `nextStep: none` stays final. Continuation reuses the existing controller and obtains a new inspection/snapshot while retaining the original user goal and bounded previous-step context.
+- No new dependency, browser permission, backend service, persistence, autonomous action, raw mutation logging or private-page content collection was added. The shared API role schema changed, so restart the local Worker before live verification to ensure client and backend agree.
+
+### Automated evidence
+
+| Exact command/check | Final result |
+|---|---|
+| `corepack pnpm typecheck` | Exit 0; shared/API/extension |
+| `corepack pnpm lint` | Exit 0 |
+| `corepack pnpm test` | Exit 0; **64 API + 71 extension unit tests passed** |
+| `WRANGLER_LOG_PATH=/tmp/clickpilot-popup-wrangler.log corepack pnpm test:e2e` | Exit 0; extension production build and API Worker dry-run build passed, then **96/96 Chromium tests passed (2.2 minutes)**; no deployment/provider calls |
+| Python production manifest/client inspection | Passed: unchanged permissions/loopback host, no static content injection, no provider credential configuration/endpoint, no production highlight logger |
+| `git diff --check` | Exit 0 |
+
+New deterministic coverage includes role/schema acceptance, priority/cap/registry identity, private-marker and native-option omission, portals, hidden-to-visible and animated/delayed menus, pointer-down opening, unrelated mutations, equivalent re-renders, transient and settled menu closing, failed explicit verification, observation timeout/cancellation, Manual highlight cleanup, fresh AI snapshots and goal retention. The full suite also reruns existing stale-target, cancellation, lifecycle, overlay and multi-step regressions. The existing Worker remained running on port 8787; tests used an isolated mock. Browser tests open panel HTML in a tab, so real Chrome side-panel verification is still required.
+
+Logs: `/tmp/clickpilot-popup-typecheck.log`, `/tmp/clickpilot-popup-lint.log`, `/tmp/clickpilot-popup-unit.log`, `/tmp/clickpilot-popup-e2e-final.log`.
+
+Intermediate evidence: the first unit run found one existing assertion expecting navigation-before-dialog order; the expected order was updated for popup priority. The first full browser run passed 94 and failed one new cap-fixture assertion: offscreen background controls left only 124 eligible controls. The fixture was corrected to actually present more than 150 controls in the viewport, and the final full run includes that regression plus a synchronous pointer-down popup. These intermediate runs are not final passing evidence.
+
+### Manual Chrome verification
+
+1. Restart the local API Worker with `corepack pnpm dev:api` if it has not reloaded the changed shared schema. At `chrome://extensions`, reload the unpacked extension from `apps/extension/.output/chrome-mv3`. In page, panel and extension-worker consoles, watch for unexpected errors. Existing consent is still required for AI; Manual inspection stays local.
+2. ChatGPT: open a conversation and its three-dot dropdown yourself. Activate ClickPilot and inspect in **Manual highlights**. Expect supported visible Rename/Pin/Plugins/Archive/Delete controls that the website exposes to be listed and highlightable, with no conversation body or input values collected. Close the menu: its highlight must disappear. Reopen and inspect again: IDs must resolve the new live controls. A displayed disabled option must remain unselectable. For AI continuation, start with the menu closed and ask to be guided to an option; when guidance is continuing, click the menu trigger yourself and expect fresh menu context and the relevant next highlight.
+3. YouTube: activate ClickPilot, choose **AI assistant**, read/accept the existing disclosure, and ask **“How can I switch accounts?”**. Expect account-button guidance first. Click it yourself. Within the bounded observation window, expect a fresh suggestion toward **Switch account** rather than no-progress solely because the menu appeared late. No option may activate automatically. A menu appearance without an explicit successful outcome must remain unverified. Real model decisions can vary; if a declared check genuinely fails, recovery remains correct.
+4. Use the existing fixture server or run `python3 -m http.server 4173 --directory tests/fixtures`. Visit `http://127.0.0.1:4173/popup.html?crowded&preexisting`. Click Account yourself, inspect in Manual, and highlight Rename, Pin, Plugins and Switch account. Expect 150 controls, the menu options, and remaining background slots including Account/Close menu. Click Close menu: expect overlay removal. Reinspect after reopening. No synthetic account action should occur until you click Switch account.
+5. Repeat AI fixture guidance on `popup.html`, `popup.html?preexisting`, `popup.html?delayed`, `popup.html?animation`, `popup.html?pointerdown`, and `popup.html?crowded`. Ask to switch accounts, then click the highlighted Account control yourself. Expect fresh Switch account guidance while keeping the original goal; delayed mode opens after 2.3 seconds. The changing noise timestamp must not cause request loops. Deterministic browser tests use mock AI replies; live Gemini wording/selection is not guaranteed.
+6. While the delayed menu/observation is pending, separately Stop, replace the question, withdraw consent, switch tabs, navigate and close the panel. Expect no late highlight or extra request for the cancelled task. Close a menu before it settles: expect safe no-progress recovery if no lasting eligible change remains. Check Requests using only synthetic data: increasing step number, fresh snapshot ID, original goal and one bounded previous-step record; no values, page prose, screenshot or full history.
+
+### Limitations and stop gate
+
+- The five-second observation window and 150-control cap remain deliberate limits. A menu appearing after the window or options arriving after an earlier settled result can require Retry. If popup controls themselves exceed the cap, not all can fit. Layout/sample guards may reject clipped or covered targets. No arbitrary clickable-div, iframe, canvas, closed-shadow-tree or native browser-menu support was added.
+- Changed eligible controls are evidence observed after the trusted action, not proof of causality or task success. Unrelated changes to actual actionable controls can still be ambiguous; ordinary unrelated prose and equivalent DOM re-renders are ignored. Existing privacy filtering remains heuristic. Actual Chrome side-panel behavior and signed-in website/model behavior require user verification; automated tests use synthetic pages and mocked AI only.
+
+**STOP: AWAITING USER VERIFICATION.** Do not begin 6B, commit, push, deploy or publish without explicit approval.

@@ -4,11 +4,12 @@ const CONTROL_SELECTOR = [
   'button', 'a[href]', 'input', 'select', 'textarea',
   '[role="button"]', '[role="link"]', '[role="checkbox"]',
   '[role="radio"]', '[role="tab"]', '[role="menuitem"]',
+  '[role="menuitemcheckbox"]', '[role="menuitemradio"]', '[role="option"]',
   '[role="switch"]', '[role="combobox"]',
 ].join(', ');
 
 const ALLOWED_ROLES = new Set([
-  'button', 'link', 'checkbox', 'radio', 'tab', 'menuitem', 'switch', 'combobox', 'textbox',
+  'button', 'link', 'checkbox', 'radio', 'tab', 'menuitem', 'menuitemcheckbox', 'menuitemradio', 'option', 'switch', 'combobox', 'textbox',
 ]);
 
 function safeLabel(text: string | null): string {
@@ -79,10 +80,12 @@ function roleFor(element: HTMLElement): string {
 }
 
 function contextFor(element: HTMLElement): string {
-  const landmark = element.closest('dialog, [role="dialog"], nav, [role="navigation"], header, main, aside, footer, form');
+  const landmark = element.closest('[role="menu"], [role="listbox"], dialog, [role="dialog"], nav, [role="navigation"], header, main, aside, footer, form');
   if (!landmark) return '';
   const label = safeLabel(landmark.getAttribute('aria-label'));
   if (label) return label;
+  if (landmark.matches('[role="menu"]')) return 'Menu';
+  if (landmark.matches('[role="listbox"]')) return 'Listbox';
   if (landmark.matches('dialog, [role="dialog"]')) return 'Dialog';
   if (landmark.matches('nav, [role="navigation"]')) return 'Navigation';
   if (landmark.matches('form')) return 'Form';
@@ -114,9 +117,20 @@ export function collectElements(doc: Document): { elements: ObservedElement[]; r
   const registry = new Map<string, Element>();
   if (!viewport) return { elements, registry };
 
-  for (const element of doc.querySelectorAll<HTMLElement>(CONTROL_SELECTOR)) {
+  // Reserve slots for visible popup controls before filling the rest in document order.
+  // IDs are assigned only after selection, and the registry stays fixed for this snapshot.
+  const popupSelector = '[role="menu"], [role="listbox"], [role="dialog"], dialog[open], [popover]';
+  const allControls = [...doc.querySelectorAll<HTMLElement>(CONTROL_SELECTOR)];
+  const popupControls = allControls
+    .filter((element) => (element.closest(popupSelector)
+      || element.matches('[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="option"]'))
+      && !element.matches(':disabled, [aria-disabled="true"]'));
+  const candidates = new Set([...popupControls, ...allControls]);
+  for (const element of candidates) {
     if (elements.length >= MAX_ELEMENTS) break;
-    if (element.closest('[contenteditable]') || isSensitiveInput(element)) continue;
+    if (!(element instanceof HTMLElement) || element.closest('[contenteditable], #clickpilot-overlay') || isSensitiveInput(element)) continue;
+    // Native select options live in browser UI, not independently highlightable page boxes.
+    if (element.closest('select') && element !== element.closest('select')) continue;
     const rect = visibleRect(element, viewport);
     if (!rect) continue;
 

@@ -1,4 +1,4 @@
-import { MAX_STEPS, OBSERVATION_MS, type TaskContext, type ExpectedOutcome, type AssistantResult, validateGuidanceResponse } from '@clickpilot/shared/guidance';
+import { MAX_STEPS, OBSERVATION_MAX_MS, OBSERVATION_TIMEOUT_GRACE_MS, type TaskContext, type ExpectedOutcome, type AssistantResult, validateGuidanceResponse } from '@clickpilot/shared/guidance';
 import { eligibleElements } from '@clickpilot/shared/privacy';
 import { isActionObservation, isGuidanceClick, isInspectionResponse, isOverlayResponse, isPageInvalidation,
   type GuidanceIdentity, type PageSnapshot } from '../../lib/messages';
@@ -174,7 +174,7 @@ function createSession(client: SessionClient, onChange: (state: GuidanceState) =
           if (active !== run || (state.kind !== 'verifying' && state.kind !== 'clicked')) return;
           run.context.previousStep!.status = 'unverifiable';
           transition({ kind: 'recovery', canContinue: run.selection?.nextStep === 'after_user_action', message: 'The observation timed out. Retry or continue manually; completion is unverified.' });
-        }, OBSERVATION_MS + 1500);
+        }, OBSERVATION_MAX_MS + OBSERVATION_TIMEOUT_GRACE_MS);
         return;
       }
       if (message.type !== 'ACTION_OBSERVED' || !run.context.previousStep

@@ -1,8 +1,7 @@
 import { browser, type Browser } from 'wxt/browser';
 import { defineContentScript } from 'wxt/utils/define-content-script';
-import { OBSERVATION_MS } from '@clickpilot/shared/guidance';
-import { eligibleElements } from '@clickpilot/shared/privacy';
-import { visibleRect, collectElements } from '../src/features/observer/collect-elements';
+import { collectElements } from '../src/features/observer/collect-elements';
+import { actionBaseline, observeAction } from '../src/features/observer/observe-action';
 import { showOverlay } from '../src/features/overlay/renderer';
 import { reportHighlightFailure } from '../src/features/overlay/diagnostics';
 import { isMockFixtureUrl } from '../src/features/session/mock';
@@ -12,6 +11,8 @@ interface ObserverState {
   isValid: () => boolean;
   dispose: () => void;
 }
+
+const ACTION_BASELINE_MAX_AGE_MS = 1500;
 
 export default defineContentScript({
   registration: 'runtime',
@@ -30,11 +31,11 @@ export default defineContentScript({
     let removeOverlay: (() => void) | null = null;
     let removeClickListener: (() => void) | null = null;
 
-    let observationTimer: ReturnType<typeof setTimeout> | undefined;
+    let stopObservation: (() => void) | undefined;
 
     function clearOverlay() {
-      clearTimeout(observationTimer);
-      observationTimer = undefined;
+      stopObservation?.();
+      stopObservation = undefined;
       removeOverlay?.();
       removeOverlay = null;
       removeClickListener?.();
@@ -65,10 +66,6 @@ export default defineContentScript({
       pageKey = crypto.randomUUID();
     }
 
-    function inventorySignature(elements: PageSnapshot['elements']) {
-      return JSON.stringify(eligibleElements(elements).map(({ role, name, context }) => ({ role, name, context })));
-    }
-
     function handleMessage(message: unknown, sender: { id?: string }, sendResponse: (response: PageSnapshot | OverlayResponse | { ok: boolean }) => void) {
       if (!ctx.isValid || sender.id !== browser.runtime.id || !isContentRequest(message)) return;
       if (message.type === 'CLEAR_ELEMENTS') {
@@ -96,38 +93,45 @@ export default defineContentScript({
           });
           const guidance = message.guidance;
           if (removeOverlay && guidance) {
+            // Some menu libraries open on pointer-down, before the click reaches us.
+            let prepared: { controls: ReturnType<typeof actionBaseline>; expanded: string | null; time: number } | undefined;
+            const prepare = (event: PointerEvent | KeyboardEvent) => {
+              if (!event.isTrusted) return;
+              prepared = undefined;
+              if (event instanceof KeyboardEvent && !['Enter', ' '].includes(event.key)) return;
+              if (!(event.target instanceof Node) || !target.contains(event.target) || !isCurrent() || !removeOverlay) return;
+              prepared = { controls: actionBaseline(document), expanded: target.getAttribute('aria-expanded'), time: performance.now() };
+            };
             const onClick = (event: MouseEvent) => {
               if (!event.isTrusted || !(event.target instanceof Node) || !target.contains(event.target)
                 || !isCurrent() || !removeOverlay) return;
-              const before = inventorySignature(currentSnapshot?.elements ?? []);
-              const expandedBefore = target.getAttribute('aria-expanded');
+              const baseline = prepared && performance.now() - prepared.time < ACTION_BASELINE_MAX_AGE_MS ? prepared : undefined;
+              const before = baseline?.controls ?? actionBaseline(document);
+              const expandedBefore = baseline ? baseline.expanded : target.getAttribute('aria-expanded');
               void browser.runtime.sendMessage({
                 type: 'GUIDANCE_CLICKED', pageKey, snapshotId, targetId: message.targetId,
                 sessionId: guidance.sessionId, requestId: guidance.requestId,
               }).catch(() => undefined);
               clearOverlay();
               if (guidance.observe) {
-                observationTimer = setTimeout(() => {
-                  observationTimer = undefined;
-                  checkNavigation();
-                  if (!isCurrent()) return;
-                  const after = inventorySignature(collectElements(document).elements);
-                  const expanded = target.getAttribute('aria-expanded');
-                  const hidden = !(target instanceof HTMLElement) || !visibleRect(target, window);
-                  const outcome = guidance.expectedOutcome;
-                  const verified = outcome?.type === 'target_hidden' ? hidden
-                    : outcome?.type === 'target_expanded' && expandedBefore !== 'true' && expanded === 'true';
+                stopObservation = observeAction(target, before, expandedBefore, guidance.expectedOutcome, isCurrent, (result) => {
+                  stopObservation = undefined;
                   void browser.runtime.sendMessage({
                     type: 'ACTION_OBSERVED', pageKey, snapshotId, targetId: message.targetId,
-                    sessionId: guidance.sessionId, requestId: guidance.requestId,
-                    changed: before !== after || expandedBefore !== expanded,
-                    status: outcome ? (verified ? 'verified' : 'not_verified') : 'unverifiable',
+                    sessionId: guidance.sessionId, requestId: guidance.requestId, ...result,
                   }).catch(() => undefined);
-                }, OBSERVATION_MS);
+                });
               }
             };
             document.addEventListener('click', onClick, true);
-            removeClickListener = () => document.removeEventListener('click', onClick, true);
+            document.addEventListener('pointerdown', prepare, true);
+            document.addEventListener('keydown', prepare, true);
+            removeClickListener = () => {
+              prepared = undefined;
+              document.removeEventListener('click', onClick, true);
+              document.removeEventListener('pointerdown', prepare, true);
+              document.removeEventListener('keydown', prepare, true);
+            };
           }
         } else {
           reportHighlightFailure(target ? 'identity_mismatch' : 'registry_missing');

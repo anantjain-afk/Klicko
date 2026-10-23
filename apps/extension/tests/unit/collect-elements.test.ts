@@ -44,8 +44,8 @@ describe('collectElements', () => {
 
     const result = collectElements(document).elements;
     expect(result.map(({ name, context }) => [name, context])).toEqual([
-      ['Settings', 'Account navigation'],
       ['Settings', 'Dialog'],
+      ['Settings', 'Account navigation'],
       ['Find a project', ''],
       ['Open menu', ''],
       ['Help', ''],

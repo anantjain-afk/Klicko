@@ -29,6 +29,12 @@ const server = createServer(async (request, response) => {
       ...((kind === 'workflow-check' && name === 'Settings') || kind === 'failed-check' || kind === 'final-changing' || kind === 'hidden-check'
         ? { expectedOutcome: { type: kind === 'hidden-check' ? 'target_hidden' : 'target_expanded' } } : {}) };
   }
+  if (kind === 'popup') {
+    const name = body.elements.some((element: { name: string }) => element.name === 'Switch account') ? 'Switch account' : 'Account';
+    const control = body.elements.find((element: { name: string }) => element.name === name);
+    result = { kind: 'guidance', targetId: control?.id ?? 'el_999', message: `Use ${name}.`, instruction: `Click ${name}.`,
+      nextStep: name === 'Account' ? 'after_user_action' : 'none' };
+  }
   if (kind === 'missing-signal') result = { kind: 'guidance', targetId: target.id, message: 'Invalid signal', instruction: 'Click' };
   if (kind === 'hostile') result = { kind: 'answer', message: '<img src=x onerror="window.bad=true"> **literal** <script>alert(1)</script>' };
   if (kind === 'unknown') result = { kind: 'guidance', nextStep: 'none', message: 'UNTRUSTED NARRATIVE', targetId: 'el_999', instruction: 'Bad target' };
@@ -60,7 +66,7 @@ async function openAssistant(fixture = 'guidance.html') {
     url: route.request().url().replace('127.0.0.1:8787', `127.0.0.1:${mockPort}`),
   }));
   const page = await extension.context.newPage();
-  await page.goto(`http://127.0.0.1:4173/${fixture}?private=PRIVATE-QUERY#PRIVATE-FRAGMENT`);
+  await page.goto(`http://127.0.0.1:4173/${fixture}${fixture.includes('?') ? '&' : '?'}private=PRIVATE-QUERY#PRIVATE-FRAGMENT`);
   await activateToolbar(page, extension.extensionId);
   const panel = await extension.context.newPage();
   await panel.goto(`chrome-extension://${extension.extensionId}/sidepanel.html`);
@@ -234,13 +240,13 @@ for (const mode of ['no-change', 'failed-check']) {
       outcome = mode; await submit(panel, 'Change a Vercel domain');
       await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Do nothing.');
       await page.locator('#no-change').click();
-      await expect(panel.getByRole('status')).toContainText('No verified progress');
+      await expect(panel.getByRole('status')).toContainText('No verified progress', { timeout: 8000 });
       expect(requests).toHaveLength(1);
       await panel.getByRole('button', { name: 'Retry', exact: true }).click();
       await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Do nothing.');
       expect((requests[1]!.taskContext as { stepNumber: number }).stepNumber).toBe(1);
       await page.locator('#no-change').click();
-      await expect(panel.getByRole('status')).toContainText('No verified progress');
+      await expect(panel.getByRole('status')).toContainText('No verified progress', { timeout: 8000 });
       outcome = 'workflow';
       await panel.getByRole('button', { name: 'Continue manually' }).click();
       await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Settings.');
@@ -351,6 +357,26 @@ for (const side of ['full', 'top', 'corner']) {
       await panel.getByRole('button', { name: 'Retry', exact: true }).click();
       await expect(page.locator('#clickpilot-overlay')).toHaveCount(1);
       expect(requests).toHaveLength(3);
+    } finally { await context.close(); }
+  });
+}
+
+for (const mode of ['', '?preexisting', '?delayed', '?animation', '?crowded', '?pointerdown']) {
+  test(`MOCK API: popup continuation ${mode} preserves goal and highlights a fresh option`, async () => {
+    const { context, page, panel } = await openAssistant(`popup.html${mode}`);
+    try {
+      outcome = 'popup'; await submit(panel, 'How can I switch accounts?');
+      await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Account.');
+      await page.locator('#account').click();
+      await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Switch account.', { timeout: 8000 });
+      expect(requests).toHaveLength(2);
+      expect(requests[1]!.userGoal).toBe('How can I switch accounts?');
+      expect(requests[1]!.taskContext).toMatchObject({ stepNumber: 2, previousStep: { status: 'unverifiable' } });
+      expect((requests[0]!.page as { snapshotId: string }).snapshotId).not.toBe((requests[1]!.page as { snapshotId: string }).snapshotId);
+      expect(JSON.stringify(requests[1]!.elements)).not.toMatch(/Hidden|Disabled/);
+      await expect(page.locator('#counter')).toHaveText('Actions: 0');
+      await page.getByRole('option', { name: 'Switch account' }).click();
+      await expect(page.locator('#counter')).toHaveText('Actions: 1');
     } finally { await context.close(); }
   });
 }
