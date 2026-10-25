@@ -41,7 +41,7 @@ describe('extension API boundary — mocked fetch only', () => {
     { ...answer, targetId: 'el_1' }, { kind: 'complete', message: 'Done' },
   ])('rejects invalid model output %j again in the extension', async (result) => {
     vi.stubGlobal('fetch', vi.fn(async () => Response.json(envelope(result, { sessionId: command.sessionId, requestId: 1 }))));
-    await expect(requestAssistant(command, snapshot, 'https://example.com', new AbortController().signal)).rejects.toThrow('invalid');
+    await expect(requestAssistant(command, snapshot, 'https://example.com', new AbortController().signal)).rejects.toThrow('reply safely');
   });
 
   it('blocks sensitive last-action context before upload', async () => {
@@ -54,9 +54,9 @@ describe('extension API boundary — mocked fetch only', () => {
 
   it('rejects stale text-only envelopes and oversized responses', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => Response.json(envelope(answer, { sessionId: command.sessionId, requestId: 99 }))));
-    await expect(requestAssistant(command, snapshot, 'https://example.com', new AbortController().signal)).rejects.toThrow('invalid');
+    await expect(requestAssistant(command, snapshot, 'https://example.com', new AbortController().signal)).rejects.toThrow('reply safely');
     vi.stubGlobal('fetch', vi.fn(async () => new Response('x'.repeat(8193))));
-    await expect(requestAssistant(command, snapshot, 'https://example.com', new AbortController().signal)).rejects.toThrow('large');
+    await expect(requestAssistant(command, snapshot, 'https://example.com', new AbortController().signal)).rejects.toThrow('reply safely');
   });
 });
 

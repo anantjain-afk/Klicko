@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { test, expect, type Page } from '@playwright/test';
-import { activateToolbar, launchExtension } from './extension';
+import { activateToolbar, launchExtension, openSharingSettings, stopExtensionWorker } from './extension';
 
 test.describe.configure({ mode: 'default' });
 let requests: Record<string, unknown>[] = [];
@@ -39,7 +39,8 @@ async function setup(consent = true, activated = true) {
   if (activated) await activateToolbar(page, extension.extensionId);
   const panel = await extension.context.newPage(); await panel.goto(`chrome-extension://${extension.extensionId}/sidepanel.html`);
   await panel.setViewportSize({ width: 360, height: 1000 });
-  if (consent) await panel.getByLabel('Allow selected text').check();
+  await openSharingSettings(panel);
+  if (consent) await panel.getByRole('checkbox', { name: /^Selected-text assistance/ }).check();
   await page.bringToFront();
   if (activated) {
     await panel.getByRole('button', { name: 'Resume text assistant' }).click();
@@ -88,12 +89,12 @@ test('toolbar activation and specific text consent are required; Cancel and Esca
   const { context, page, panel, extensionId } = await setup(false, false);
   try {
     await page.locator('#passage').click({ clickCount: 3 }); await page.waitForTimeout(250); await expect(page.locator('#clickpilot-text')).toHaveCount(0);
-    await activateToolbar(page, extensionId); await panel.reload(); await page.bringToFront();
+    await activateToolbar(page, extensionId); await panel.reload(); await openSharingSettings(panel); await page.bringToFront();
     await panel.getByRole('button', { name: 'Resume text assistant' }).click(); await select(page);
     await page.getByRole('button', { name: 'Ask ClickPilot', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Ask', exact: true })).toBeDisabled();
     await page.getByLabel('Question about this passage').press('Escape'); await expect(page.locator('#clickpilot-text')).toHaveCount(0);
-    await panel.getByLabel('Allow selected text').check(); await page.bringToFront();
+    await panel.getByRole('checkbox', { name: /^Selected-text assistance/ }).check(); await page.bringToFront();
     await panel.getByRole('button', { name: 'Resume text assistant' }).click();
     await compose(page); await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     expect(requests).toHaveLength(0);
@@ -110,6 +111,25 @@ test('script-only changes do not show a bubble; keyboard selection supports focu
     await page.getByRole('button', { name: 'Ask ClickPilot', exact: true }).focus(); await page.keyboard.press('Enter');
     await expect(page.getByLabel('Question about this passage')).toBeFocused();
     await page.keyboard.type('Explain'); await page.keyboard.press('Enter'); await expect(reply(panel)).toContainText(detail);
+  } finally { await context.close(); }
+});
+
+test('worker restart retains an unsent text draft and a completed panel explanation without replay', async () => {
+  const { context, page, panel, extensionId } = await setup();
+  try {
+    await compose(page);
+    await page.getByLabel('Question about this passage').fill('Keep this unsent question.');
+    await stopExtensionWorker(page, extensionId);
+    await expect(page.getByLabel('Question about this passage')).toHaveValue('Keep this unsent question.');
+    expect(requests).toHaveLength(0);
+    await page.getByLabel('Question about this passage').press('Enter');
+    await expect(reply(panel)).toContainText(detail);
+    await stopExtensionWorker(page, extensionId);
+    await expect(reply(panel)).toContainText(detail);
+    await panel.reload(); await openSharingSettings(panel);
+    await expect(panel.getByRole('checkbox', { name: /^Selected-text assistance/ })).toBeChecked();
+    await expect(reply(panel)).not.toContainText(detail);
+    expect(requests).toHaveLength(1);
   } finally { await context.close(); }
 });
 
@@ -152,7 +172,7 @@ for (const kind of ['hostile', 'clarification', 'unsupported', 'invalid', 'stale
       mode = kind; await submit(page);
       await expect(reply(panel)).toContainText(kind === 'hostile' ? '<script>window.bad=true</script> **literal**'
         : kind === 'clarification' || kind === 'unsupported' ? 'More passage context'
-        : kind === 'error' ? 'quota was reached' : 'invalid or stale');
+        : kind === 'error' ? 'AI usage limit was reached' : "couldn't use that reply safely");
       expect(await page.evaluate(() => 'bad' in window)).toBe(false);
       expect(await panel.evaluate(() => 'bad' in window)).toBe(false);
       await expect(page.locator('#clickpilot-text img, #clickpilot-text script')).toHaveCount(0);
@@ -168,7 +188,7 @@ for (const action of ['cancel', 'stop', 'withdraw', 'new-selection', 'navigate',
       mode = 'delayed'; await submit(page); await expect.poll(() => requests.length).toBe(1);
       if (action === 'cancel') await page.getByRole('button', { name: 'Cancel', exact: true }).click();
       if (action === 'stop') await panel.getByRole('button', { name: 'Stop text assistant' }).click();
-      if (action === 'withdraw') await panel.getByLabel('Allow selected text').uncheck();
+      if (action === 'withdraw') await panel.getByRole('checkbox', { name: /^Selected-text assistance/ }).uncheck();
       if (action === 'new-selection') await select(page, '#second');
       if (action === 'navigate') await page.goto('http://127.0.0.1:4173/second.html');
       if (action === 'spa') await page.evaluate(() => history.pushState({}, '', '/text.html?route=new'));

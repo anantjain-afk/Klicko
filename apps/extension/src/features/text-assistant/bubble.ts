@@ -17,6 +17,8 @@ export function createTextBubble(pageKey: () => string, valid: () => boolean, se
   let awaitingPointerSelection = false;
   let previousFocus: HTMLElement | null = null;
   let lastUrl = location.href;
+  let suspended = false;
+  let suspendedDraft: string | undefined;
 
   function emit(type: 'TEXT_SELECTED' | 'TEXT_OPENED' | 'TEXT_CANCELLED' | 'TEXT_INVALIDATED') {
     if (current) send({ ...current.identity, type });
@@ -26,6 +28,7 @@ export function createTextBubble(pageKey: () => string, valid: () => boolean, se
     surface?.host.remove(); surface = null; box = null;
   }
   function cancel(invalidated = false) {
+    suspendedDraft = undefined;
     clearTimeout(completionTimer);
     emit(invalidated ? 'TEXT_INVALIDATED' : 'TEXT_CANCELLED');
     const hadFocus = !!surface?.shadow.activeElement;
@@ -84,7 +87,7 @@ export function createTextBubble(pageKey: () => string, valid: () => boolean, se
     surface.shadow.append(style, box); document.documentElement.append(surface.host);
     return box;
   }
-  function compose() {
+  function compose(draft = '') {
     if (!current || !matches(current.identity)) { cancel(true); return; }
     previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     emit('TEXT_OPENED'); mode = 'composing';
@@ -93,8 +96,9 @@ export function createTextBubble(pageKey: () => string, valid: () => boolean, se
     const label = document.createElement('label'); label.textContent = 'Question about this passage'; label.htmlFor = 'clickpilot-text-question';
     const input = document.createElement('input'); input.id = label.htmlFor; input.maxLength = MAX_QUESTION_LENGTH; input.required = true;
     input.autocomplete = 'off'; input.placeholder = 'What does this mean?';
+    input.value = draft;
     const note = document.createElement('p'); note.className = 'note';
-    note.textContent = enabled?.consent ? 'Only this passage and your question are sent.' : 'Allow selected text sharing in the side panel to Ask.';
+    note.textContent = enabled?.consent ? 'Only this passage and your question are sent.' : 'Turn on Selected-text assistance in Settings to ask.';
     const ask = document.createElement('button'); ask.type = 'submit'; ask.textContent = 'Ask'; ask.disabled = !enabled?.consent;
     let userSubmitted = false;
     const approveSubmit = (event: Event) => {
@@ -135,7 +139,7 @@ export function createTextBubble(pageKey: () => string, valid: () => boolean, se
     place();
   }
   function finishSelection() {
-    if (!enabled || pointerDown || surface?.shadow.activeElement) return;
+    if (!enabled || suspended || pointerDown || surface?.shadow.activeElement) return;
     if (awaitingPointerSelection && !selectionChanged) { awaitingPointerSelection = false; return; }
     awaitingPointerSelection = false;
     const captured = captureSelection();
@@ -146,7 +150,7 @@ export function createTextBubble(pageKey: () => string, valid: () => boolean, se
     cancel(); mode = 'offer';
     current = { ...captured, identity: { sessionId: enabled.sessionId, pageKey: pageKey(), selectionId: crypto.randomUUID() } };
     emit('TEXT_SELECTED');
-    base().append(button('Ask ClickPilot', compose)); place();
+    base().append(button('Ask ClickPilot', () => compose())); place();
   }
   function schedule() { clearTimeout(completionTimer); completionTimer = setTimeout(finishSelection, 120); }
   function inside(event: Event) { return !!surface && event.composedPath().includes(surface.host); }
@@ -173,7 +177,7 @@ export function createTextBubble(pageKey: () => string, valid: () => boolean, se
     if (event.key === 'Escape' && current) { if (inside(event)) { event.preventDefault(); event.stopPropagation(); } cancel(); }
   }
   function onVisibility() { if (document.hidden) disable(); }
-  function disable() { cancel(true); enabled = null; }
+  function disable() { cancel(true); enabled = null; suspended = false; }
   const poll = setInterval(() => {
     if (lastUrl !== location.href || !valid()) { lastUrl = location.href; disable(); }
     else if (current && !matches(current.identity)) cancel(true);
@@ -193,12 +197,17 @@ export function createTextBubble(pageKey: () => string, valid: () => boolean, se
       if (command.type === 'ENABLE_TEXT') {
         if (enabled?.sessionId !== command.sessionId) cancel();
         enabled = command; lastUrl = location.href;
+        const draft = suspendedDraft;
+        suspended = false; suspendedDraft = undefined;
+        if (draft !== undefined && current && matches(current.identity)) {
+          emit('TEXT_SELECTED'); compose(draft);
+        }
         const ask = surface?.shadow.querySelector<HTMLButtonElement>('button[type="submit"]');
         if (ask) ask.disabled = !command.consent;
         const note = surface?.shadow.querySelector('.note');
         if (note && mode === 'composing') note.textContent = command.consent
-          ? 'Only this passage and your question are sent.' : 'Allow selected text sharing in the side panel to Ask.';
-        return { ok: true, pageKey: pageKey() };
+          ? 'Only this passage and your question are sent.' : 'Turn on Selected-text assistance in Settings to ask.';
+        return { ok: true, pageKey: pageKey(), selectionId: current?.identity.selectionId };
       }
       if (!matches(command)) return { ok: false };
       if (command.type === 'CHECK_TEXT') return { ok: true, selectedText: current!.text };
@@ -208,6 +217,14 @@ export function createTextBubble(pageKey: () => string, valid: () => boolean, se
       return { ok: true };
     },
     disable,
+    suspend() {
+      // The page document can retain an unsent draft while the worker restarts.
+      // Only the same panel session may restore it, after fresh access checks.
+      suspendedDraft = mode === 'composing' ? surface?.shadow.querySelector('input')?.value : undefined;
+      suspended = true;
+      removeSurface();
+      if (suspendedDraft === undefined) current = null;
+    },
     dispose() {
       disable(); clearInterval(poll); clearTimeout(completionTimer);
       document.removeEventListener('pointerdown', onPointerDown, true); document.removeEventListener('pointerup', onPointerUp, true);

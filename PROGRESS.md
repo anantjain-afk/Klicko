@@ -4,7 +4,9 @@ Updated: 25 October 2026.
 
 ## Current status
 
-Milestone 7A: **AWAITING USER VERIFICATION**, 25 October 2026. Approved scope implemented, including strict distinct explanation/message variants and retained detailed panel replies when floating geometry is unavailable. Final checks: typecheck/lint/build passed; 92 API + 113 extension unit tests; 128/128 Chromium tests including the complete existing 6A/6B suite. Actual evidence and numbered Chrome checks are recorded below.
+UX-1: **AWAITING USER VERIFICATION**, 25 October 2026. Approved reliability/onboarding scope implemented. Final typecheck/lint/build passed; **92 API + 119 extension unit tests** and **131/131 Chromium tests** passed. The UX-1 entry at the end records the root cause, changes, exact checks, visual evidence, limitations and numbered Chrome steps. UX-2 has not begun and requires separate approval after UX-1 verification.
+
+Milestone 7A: **VERIFIED by the user**, 25 October 2026. Approved scope implemented, including strict distinct explanation/message variants and retained detailed panel replies when floating geometry is unavailable. Final checks: typecheck/lint/build passed; 92 API + 113 extension unit tests; 128/128 Chromium tests including the complete existing 6A/6B suite. Actual evidence and numbered Chrome checks are recorded below.
 
 Milestone 6B: the user confirmed completion on 25 October 2026. The earlier report that it was unimplemented described the old checkout, not the existing 6B branch. Before coding 7A, Git inspection found clean `milestone-7A` at `79aaf6c`, one worktree, and local/origin `milestone-6B` at `109e04f`. That direct-descendant commit contains the completed 6B code/tests/docs. The 7A branch was fast-forwarded to it; no new commit, push, fetch or deployment occurred. The prior 6B AWAITING USER VERIFICATION entry is retained as historical evidence; this update records the user's current completion confirmation, without inventing new agent-run Chrome results. The separate popup verification record is not changed.
 
@@ -51,6 +53,7 @@ The user subsequently said “ok , now continue with milestone 5A,” explicitly
 | 5B | Conversational Gemini replies with single-step visual guidance | VERIFIED | User confirmed manual verification on 22 October 2026; 55 mocked API + 37 extension unit tests; 55 Chromium tests; five actual local HTTP checks; four real Gemini outcome smoke cases passed |
 | 6A | AI-driven multi-step guidance with temporary task context | VERIFIED | User verified 6A and the shared highlighting correction on 23 October 2026 |
 | 6B | Navigation and lifecycle recovery | AWAITING USER VERIFICATION | Approved on 23 October 2026; implementation and actual evidence below |
+| 7A | Contextual text assistant | VERIFIED | User confirmed all manual checks on 25 October 2026 |
 | 7 | Optional screenshot fallback | NOT APPROVED — OPTIONAL | Not run |
 | 8 | Security review and release preparation | NOT APPROVED | Not run |
 
@@ -628,7 +631,7 @@ The initial sandboxed browser command could not bind the fixture server (`Permis
 
 ## Milestone 7A — Contextual text assistant — 25 October 2026
 
-Status: **AWAITING USER VERIFICATION**. Implementation and final automated checks complete. The user approved the scoped plan with separate strict result variants and a retained side-panel explanation. No new commit, push, deployment, publication or other milestone is authorized or performed.
+Status: **VERIFIED by the user**, 25 October 2026. The user confirmed that all manual verification is complete. Implementation and final automated checks complete. The user approved the scoped plan with separate strict result variants and a retained side-panel explanation. No new commit, push, deployment, publication or other milestone is authorized or performed.
 
 ### Base discrepancy resolved before coding
 
@@ -684,9 +687,69 @@ Logs: `/tmp/clickpilot-7a-typecheck.log`, `/tmp/clickpilot-7a-lint.log`, `/tmp/c
 - Positioning uses a simple visible range rectangle and viewport bounds; heavily clipped/transformed layouts can fall back to the panel. A new selection or actual page/text invalidation clears the previous reply; pure geometry loss keeps the detailed explanation. Selecting without enough local space to open a composer requires selecting a smaller/visible passage.
 - No real Gemini, signed-in website, actual Chrome side-panel closure or natural worker suspension was verified by the agent. Synthetic API/unit/browser evidence remains distinct from the user's required manual Chrome verification. Existing local-only backend/security and upstream cancellation limits remain.
 
-**STOP: AWAITING USER VERIFICATION.** No commit, push, deployment, publication or next milestone.
+**STOP: VERIFIED.** No deployment, publication or next milestone is authorized.
 
 
 ## Milestone 7A Git authorization — 25 October 2026
 
-The user requested: “ok, good commit these changes and push the milestone-7A”. This explicitly authorizes committing the scoped 7A implementation, shared contract, API/extension tests, synthetic fixture and documentation and pushing branch `milestone-7A` to the configured origin, `https://github.com/anantjain-afk/ClickPilot.git`. The implementation has not changed since the recorded final successful checks; this handoff adds only authorization documentation. No explicit manual Chrome result is inferred from “ok, good”; 7A remains AWAITING USER VERIFICATION. No deployment, publication, merge or next milestone is authorized.
+The user requested: “ok, good commit these changes and push the milestone-7A”. This explicitly authorizes committing the scoped 7A implementation, shared contract, API/extension tests, synthetic fixture and documentation and pushing branch `milestone-7A` to the configured origin, `https://github.com/anantjain-afk/ClickPilot.git`. The implementation has not changed since the recorded final successful checks; this handoff adds only authorization documentation. The user subsequently explicitly confirmed that all manual verification is complete; 7A is VERIFIED. Commit `490d179` was pushed to `origin/milestone-7A`. No deployment, publication, merge or next milestone is authorized.
+
+## UX-1 — Reliability, onboarding and clear messaging — 25 October 2026
+
+Status: **AWAITING USER VERIFICATION**. The user approved the reviewed UX-1 plan with “ok approved”. Work is limited to UX-1; the chat-first UX-2 redesign has not begun. No commit, push, deployment or publication was performed. Existing local PLAN.md/PROGRESS.md edits were preserved.
+
+### Root cause and implementation
+
+- Reproduced the restart failure before changing implementation: removed the required second toolbar click from the existing forced-worker-loss regression and ran it against the previous build. Continue could not render the next highlight. The `activatedOrigins` Map existed only in worker memory, so a restarted worker rejected still-permitted tabs. The original 6B test explicitly required reactivation and therefore did not cover the desired behavior.
+- Replaced that volatile Map with small trusted `chrome.storage.session` records at `clickpilot.activation.<tabId>`, containing only the deliberately activated origin. Every use checks both that record and Chrome’s actual scripting access using a no-op script. Same-origin navigation retains intent; cross-origin/inaccessible navigation, failed probes and tab closure remove it. Stored intent never confers access. The 6B interruption record remains unchanged and contains no URLs/task text.
+- Kept the existing panel/session coordinator and bounded automatic reconnect attempts, with increasing delays and additional focus/toolbar/explicit Reconnect triggers when disconnected. There is no heartbeat, idle traffic or periodic reconnect polling. Old attempts/targets are invalidated and never replayed. The live panel retains its exact goal and already displayed webpage/text replies; connected-again wording offers Continue for fresh inspection. Pending text questions remain visible with instructions to reselect, without offering a retry that can no longer work. Explicit Stop stays stopped across connection loss.
+- Distinguished temporary port loss from explicit Stop. A page can retain an unsent text draft in volatile memory, remove its surface while disconnected, and restore it only to the same surviving panel session after revalidating access, page/range identity and selection binding. A different/destroyed panel cannot recover it. Stop, revocation, navigation and invalidation discard it. A late old page-port disconnect cannot clear a newer connection. The selection collector and overlay renderer were not rewritten.
+- Added one short first-use screen with two optional, initially unchecked choices: Webpage guidance and Selected-text assistance. Settings can change/revoke each independently. Store only `{version: 1, onboardingComplete, guidance, selectedText}` in trusted `chrome.storage.local['clickpilot.ai-sharing']`. Missing, malformed, incomplete, unknown-version and unfinished records authorize no sharing. Chrome activation remains separate. Existing volatile opt-ins are not silently migrated. No page/task text, passage, question, answer or chat history is stored in preferences.
+- Reflect checkbox gestures immediately while a new grant remains blocked until its save succeeds. Revocation takes effect immediately even if saving fails; errors explain the limitation and offer retry. Initial reads cannot overwrite newer storage changes. Preferences propagate to open panels. Both the panel and worker enforce the matching consent, including a second worker check immediately before upload; storage changes cancel affected pending work. Guidance consent cannot authorize selected prose or the reverse. A request already accepted upstream may still consume quota.
+- Replaced ordinary provider/invalid-reply/snapshot jargon with connection, safe-reply and page-change messages. Fixed error codes remain available internally through Error.cause and the unchanged backend diagnostics/contracts. Sensitive-page refusal remains a privacy message; genuine access loss still explains the toolbar gesture. No new permission, host, dependency, framework, backend protocol, screenshot, buddy, voice or persistent history feature was added.
+
+### Actual automated evidence
+
+| Exact command/check | Result |
+|---|---|
+| `corepack pnpm exec playwright test tests/e2e/assistant.spec.ts --workers=1 --grep '6B forced worker loss'` against the previous build, without the second toolbar click | **Failed as expected before implementation**: no next highlight after Continue; `/tmp/clickpilot-ux1-before.log` |
+| `corepack pnpm typecheck` | Exit 0; final shared/API/extension source |
+| `corepack pnpm lint` | Exit 0; final source |
+| `corepack pnpm test` | Exit 0; **92 API + 119 extension unit tests** |
+| `WRANGLER_LOG_PATH=/tmp/clickpilot-ux1-wrangler.log corepack pnpm build` | Exit 0; final production Chrome extension and API Worker **dry-run** build |
+| Focused Playwright command below | Focused run passed **6/6 (11.1s)** |
+| `WRANGLER_LOG_PATH=/tmp/clickpilot-ux1-wrangler.log corepack pnpm test:e2e --workers=2` | Exit 0; initial full run **131/131 (2.5m)**; final full run after completed webpage-answer retention and connection wording **131/131 (2.6m)**, with production/dry-run builds |
+| Python final production manifest/client inspection | Passed: unchanged activeTab/scripting/sidePanel/storage and loopback host, no static content scripts, provider key configuration/endpoint, screenshot or speech APIs, or temporary diagnostics in client JS |
+| `git diff --exit-code HEAD -- apps/api packages/shared apps/extension/wxt.config.ts pnpm-lock.yaml apps/extension/src/features/observer apps/extension/src/features/overlay apps/extension/src/features/session/checkpoint.ts apps/extension/src/features/text-assistant/selection.ts` | Exit 0; these systems/contracts/permissions/dependencies remain unchanged |
+| `git diff --check` | Exit 0 after final documentation update |
+
+Focused command (shown outside the table so regex alternation remains copyable):
+
+```sh
+corepack pnpm exec playwright test tests/e2e/panel.spec.ts tests/e2e/assistant.spec.ts tests/e2e/text-assistant.spec.ts --workers=2 --grep 'first-use|direct AI|6B forced worker loss|worker restart retains|panel explanation, exact tooltip|selection completes'
+```
+
+Only **six new unit tests and three new browser cases** were added. Existing cases were updated/reused for stored consent, Stop/revocation, late-response rejection and reconnect. Coverage includes pending-grant blocking, failed revocation/retry, late initial reads, strict preference records, actual permission-probe failure, cross-origin activation cleanup, first-use persistence, independent worker consent enforcement, unsent draft/completed reply retention and the complete existing guidance/text/overlay/privacy suite. The forced-worker guidance case now uses `localhost`, without a permanent host permission, and verifies original session/goal retention and a completed webpage answer across separate forced worker losses.
+
+Intermediate issues were fixed, not counted as passes: the sandbox initially prevented the fixture server from binding its local port, so local browser checks used approved escalation. Lint found one unused test parameter. Focused tests caught an asynchronously controlled checkbox reverting visually before storage completed, an ambiguous status locator, and the headless harness running both a real panel and its substitute tab. With persisted consent those two panels competed to rearm text after worker loss. The harness now suppresses only sidePanel.open during genuine CDP toolbar gestures, leaving one substitute owner while retaining actual activeTab grants. Temporary content-free lifecycle diagnostics used to locate this were removed from final source/build.
+
+Visual inspection: viewed first-use setup at 360px and 260px, then the final onboarding and expanded Settings captures. Text and controls are readable and the narrow page has no horizontal overflow. Evidence: `/tmp/clickpilot-ux1-onboarding-360.png`, `/tmp/clickpilot-ux1-onboarding-260.png`, `/tmp/clickpilot-ux1-settings-260.png`. These are synthetic browser captures, not actual Chrome side-panel verification. The full chat layout remains UX-2.
+
+Logs: `/tmp/clickpilot-ux1-typecheck.log`, `/tmp/clickpilot-ux1-lint.log`, `/tmp/clickpilot-ux1-unit.log`, `/tmp/clickpilot-ux1-build.log`, `/tmp/clickpilot-ux1-focused.log`, `/tmp/clickpilot-ux1-e2e.log`, `/tmp/clickpilot-ux1-e2e-final.log`. Build: `apps/extension/.output/chrome-mv3`. All agent-run provider traffic used synthetic fixtures and mocks; no real Gemini call was made.
+
+### Numbered manual Chrome verification
+
+1. Start the existing configured local backend with `corepack pnpm dev:api` and serve fixtures with `python3 -m http.server 4173 --directory tests/fixtures` if not already running. Reload the unpacked extension from `apps/extension/.output/chrome-mv3` at `chrome://extensions`. Open `http://localhost:4173/navigation.html` and activate the toolbar. Expect no new browser permission request. For these checks use public/synthetic text only, and watch page/panel/worker consoles for unexpected errors.
+2. On first use, expect both sharing choices unchecked and an explanation separating Chrome access from AI sharing. Save both off: local Mock/Manual tools should remain available, Ask Gemini should be disabled, and no AI request should occur. Enable only Webpage guidance in Settings; Selected-text assistance must remain off. Reload the panel and then restart Chrome: expect the choices remembered and no repeated onboarding. Browser restart still requires toolbar activation; it must not require consenting again. Test the opposite combination too. To repeat first use intentionally, remove only `clickpilot.ai-sharing` from local extension storage in panel DevTools; this revokes sharing. Check keyboard focus and narrow panel sizing.
+3. With Webpage guidance enabled and the toolbar activated on `localhost`, ask a synthetic navigation goal or a simple question. With the actual panel document alive, stop its worker using Chrome’s worker tooling (where available, `chrome://serviceworker-internals`, the matching extension worker, Stop). Expect safe removal of old targets, the original question/goal and any completed reply retained, automatic reconnection and a connected-again message. Continue should inspect fresh context and guide without another toolbar click on that still-permitted origin. No old request may replay. Separately detach DevTools and leave it idle for at least 45 seconds, then use it again to check natural suspension; record what Chrome actually does.
+4. Open `http://localhost:4173/text.html`, enable Selected-text assistance, select the public paragraph and open Ask ClickPilot. Type a draft without submitting; interrupt the worker while keeping the page and panel alive. Expect the same draft to return with no upload until explicit Ask. Submit it and repeat worker loss after the explanation appears: expect the detailed panel answer retained and no automatic second request. Selecting new text, navigation or explicit Stop should clear the old binding/draft.
+5. In separate runs, submit guidance/text and immediately turn off its sharing choice in Settings. Expect stopped work, removed decoration and no late reply or automatic follow-up. Reload/reopen: expect that choice still off. The other category must retain its own setting. Ask/Retry must not upload without the relevant choice. Stop must remain stopped after worker loss until explicit Resume/new guidance/toolbar activation. Already sent provider requests may have reached Google before cancellation.
+6. Repeat the navigation fixture for SPA and `navigation.html?full`, following Settings → Domains → Edit domain yourself. Try Different origin, tab switching/return, missing/covered targets and panel destruction. A different origin must require its own toolbar gesture even though sharing is remembered; Continue alone must not grant access. A surviving panel keeps its owned goal, while a destroyed panel requires goal re-entry, optionally with the existing restart reminder. Sharing preferences survive panel destruction; task text and selected passages do not. No website action may occur before your own click/type. Stale targets, lost replies solely from worker sleep, request loops, unexpected uploads or console errors fail verification.
+
+### Known limits and stop gate
+
+- Actual Chrome side-panel opening/closure/document preservation and natural worker suspension remain manual checks. Headless tests use a substitute panel tab and explicitly suppress the extra real panel; forced CDP termination does not prove natural lifecycle timing. No signed-in site or live Gemini response was verified by the agent.
+- Interrupted guidance pauses for explicit Continue with fresh context instead of replaying a request. Pending selected-text requests are cancelled and require reselecting; they are not silently retried. Draft restoration requires the same live panel session, page and valid visible range; geometry/visibility/navigation changes can discard it safely. Browser/extension restart clears session activation metadata, not saved AI preferences.
+- Storage failure is visible and fails closed for new grants. A failed revocation save keeps sharing off in that panel and asks the user to retry saving before closure; it cannot pretend the stored preference changed. Existing filtering, top-level DOM, local-only backend, cancellation/quota and single-owner recovery limits remain.
+
+**STOP: AWAITING USER VERIFICATION.** Do not begin UX-2, commit, push, deploy or publish without the required explicit authorization.

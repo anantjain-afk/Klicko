@@ -2,6 +2,7 @@ import { TaskContextSchema, type TaskContext, GuidanceErrorSchema, GuidanceReque
 import { containsSensitiveText, prepareProviderContext } from '@clickpilot/shared/privacy';
 import { readBoundedJson } from '@clickpilot/shared/http';
 import type { GuidanceIdentity, PageSnapshot } from './messages';
+import { aiServiceError } from './ai-errors';
 
 export const API_URL = 'http://127.0.0.1:8787/v1/guidance/next';
 export interface AssistantRequest extends GuidanceIdentity {
@@ -42,16 +43,16 @@ export async function requestAssistant(command: AssistantRequest, snapshot: Page
   const body = JSON.stringify(request);
   if (new TextEncoder().encode(body).byteLength > MAX_REQUEST_BYTES) return assistantError('The page context is too large to send.');
   const response = await fetch(API_URL, { method: 'POST', signal, redirect: 'error', cache: 'no-store',
-    headers: { 'Content-Type': 'application/json' }, body });
-  const value = await readBoundedJson(response, 8192);
+    headers: { 'Content-Type': 'application/json' }, body }).catch(() => { throw aiServiceError('connection'); });
+  const value = await readBoundedJson(response, 8192).catch(() => { throw aiServiceError('invalid_reply'); });
   if (!response.ok) {
     const error = GuidanceErrorSchema.safeParse(value);
-    return assistantError(error.success ? error.data.error.message : 'The local AI service returned an invalid error.');
+    throw aiServiceError(error.success ? error.data.error.code : 'invalid_reply');
   }
   const parsed = validateGuidanceResponse(value, request, clean.elements.map((element) => element.id));
   if (!parsed || containsSensitiveText(parsed.result.message)
     || (parsed.result.kind === 'guidance' && containsSensitiveText(parsed.result.instruction))) {
-    return assistantError('The AI reply was invalid or referenced an unobserved control. Nothing was displayed.');
+    throw aiServiceError('invalid_reply');
   }
   return parsed;
 }

@@ -6,6 +6,7 @@ export interface TextState {
   message: string;
   question?: string;
   result?: TextResult;
+  canRetry?: boolean;
 }
 interface TextClient {
   post: (message: unknown) => void;
@@ -45,13 +46,13 @@ export function createTextSession(client: TextClient, change: (state: TextState)
       const value = await client.ask(run.command, run.abort.signal);
       if (active !== run) return;
       const response = validateTextResponse(value, run.command);
-      if (!response) throw new Error('The explanation was invalid or stale. Select text and try again.');
+      if (!response) throw new Error('ClickPilot couldn’t use that reply safely. Select the passage and try again.');
       active = null;
       set({ kind: 'answered', message: 'Response about your selected passage.', question: command.question, result: response.result });
     } catch (error) {
       if (active !== run) return;
       active = null;
-      set({ kind: 'error', question: command.question,
+      set({ kind: 'error', question: command.question, canRetry: true,
         message: error instanceof Error && error.message.length <= 240 ? error.message : 'Text assistance could not respond. Retry if needed.' });
     }
   }
@@ -60,6 +61,7 @@ export function createTextSession(client: TextClient, change: (state: TextState)
     onConnected() { if (enabled) enable(); },
     ownedTab: () => page?.tabId,
     setConsent(value: boolean) {
+      if (consent === value) return;
       consent = value;
       if (!value) { clear('Selected-text sharing is off. Nothing will be uploaded.'); post({ type: 'STOP_TEXT' }); }
       if (enabled) enable();
@@ -70,9 +72,14 @@ export function createTextSession(client: TextClient, change: (state: TextState)
         && typeof value.tabId === 'number' && Number.isSafeInteger(value.tabId) && value.tabId >= 0 && 'pageKey' in value
         && TextIdentitySchema.safeParse({ sessionId, pageKey: value.pageKey, selectionId: 'pending' }).success) {
         page = { tabId: value.tabId, pageKey: String(value.pageKey) };
-        if (state.kind === 'idle' || state.kind === 'stopped' || state.kind === 'error') set({ kind: 'ready', message: 'Select public webpage text, then choose Ask ClickPilot.' });
+        if ('selectionId' in value && TextIdentitySchema.safeParse({ sessionId, pageKey: value.pageKey, selectionId: value.selectionId }).success) {
+          selectionId = String(value.selectionId);
+        }
+        if (state.kind === 'idle' || state.kind === 'stopped' || (state.kind === 'error' && !state.question)) set({ kind: 'ready', message: 'Select public webpage text, then choose Ask ClickPilot.' });
       }
-      if (value.type === 'TEXT_ARM_ERROR' && enabled) set({ kind: 'error', message: 'Click the ClickPilot toolbar icon on a public page to enable text help.' });
+      if (value.type === 'TEXT_ARM_ERROR' && enabled) set({ kind: 'error', message: 'reason' in value && value.reason === 'privacy'
+        ? 'For your privacy, text help is unavailable on this page. Try a public page.'
+        : 'Click the ClickPilot toolbar icon on a public page to enable text help.' });
     },
     onPageEvent(value: unknown, tabId: number) {
       if (!enabled || !isTextEvent(value) || value.sessionId !== sessionId || page?.tabId !== tabId || page.pageKey !== value.pageKey) return;
@@ -93,7 +100,14 @@ export function createTextSession(client: TextClient, change: (state: TextState)
       page = null; clear(message); post({ type: 'STOP_TEXT' });
     },
     stop() { enabled = false; clear('Text assistant stopped. Resume when you want to select a passage.', 'stopped'); post({ type: 'STOP_TEXT' }); },
-    connectionLost() { page = null; clear('The connection closed. Activate the toolbar to resume text help.', 'stopped'); },
+    connectionLost() {
+      page = null; selectionId = null; retryCommand = null; cancelRequest();
+      if (!enabled) return;
+      if (state.kind === 'answered') return;
+      set({ ...state, kind: state.question ? 'error' : 'idle', canRetry: false, message: state.question
+        ? 'The connection was interrupted. Select the passage again to retry your question.'
+        : 'ClickPilot is reconnecting. Your sharing choices are unchanged.' });
+    },
     retry() { if (state.kind === 'error' && retryCommand) void submit(retryCommand); },
     dispose() { enabled = false; cancelRequest(); retryCommand = null; page = null; post({ type: 'STOP_TEXT' }); },
   };

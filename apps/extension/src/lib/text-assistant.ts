@@ -1,6 +1,7 @@
 import { MAX_TEXT_BYTES, TextErrorSchema, TextIdentitySchema, TextRequestSchema, prepareText, validateTextResponse,
   safeTextResult, type TextRequest, type TextIdentity, type TextResult } from '@clickpilot/shared/text-assistant';
 import { readBoundedJson } from '@clickpilot/shared/http';
+import { aiServiceError } from './ai-errors';
 
 export type TextEvent = TextIdentity & (
   { type: 'TEXT_SELECTED' | 'TEXT_OPENED' | 'TEXT_CANCELLED' | 'TEXT_INVALIDATED' }
@@ -51,13 +52,13 @@ export async function requestText(command: TextCommand, signal: AbortSignal) {
   const response = await fetch('http://127.0.0.1:8787/v1/text/explain', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
     signal, redirect: 'error', cache: 'no-store',
-  });
-  const value = await readBoundedJson(response, MAX_TEXT_BYTES);
+  }).catch(() => { throw aiServiceError('connection'); });
+  const value = await readBoundedJson(response, MAX_TEXT_BYTES).catch(() => { throw aiServiceError('invalid_reply'); });
   if (!response.ok) {
     const error = TextErrorSchema.safeParse(value);
-    throw new Error(error.success ? error.data.error.message : 'The text service returned an invalid error.');
+    throw aiServiceError(error.success ? error.data.error.code : 'invalid_reply');
   }
   const parsed = validateTextResponse(value, request);
-  if (!parsed) throw new Error('The explanation was invalid or stale. Nothing was displayed.');
+  if (!parsed) throw aiServiceError('invalid_reply');
   return parsed;
 }

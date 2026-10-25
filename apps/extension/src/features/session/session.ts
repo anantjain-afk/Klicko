@@ -139,7 +139,7 @@ function createSession(client: SessionClient, onChange: (state: GuidanceState) =
           return;
         }
         if (!isInspectionResponse(response) || response.requestId !== run.requestId) {
-          pause('The inspection response was invalid. Retry the request.'); return;
+          pause('ClickPilot couldn’t check this page. Try again.'); return;
         }
         if (response.type === 'INSPECTION_ERROR') { suspend(INSPECTION_ERRORS[response.reason]); return; }
         if (run.tabId !== undefined && (run.tabId !== response.tabId || (run.snapshot && run.snapshot.pageKey !== response.snapshot.pageKey))) {
@@ -164,7 +164,7 @@ function createSession(client: SessionClient, onChange: (state: GuidanceState) =
           const reply = validateGuidanceResponse(value, { ...identity, page: response.snapshot },
             eligibleElements(response.snapshot.elements).map((element) => element.id));
           if (!reply) {
-            cancel(); transition({ kind: 'error', message: 'The AI reply was invalid or stale. Nothing was displayed.' }); return;
+            cancel(); transition({ kind: 'error', message: 'ClickPilot couldn’t use that reply safely. Try again.' }); return;
           }
           if (reply.result.kind !== 'guidance') {
             // Retain snapshot tracking so navigation also invalidates text-only replies.
@@ -197,7 +197,7 @@ function createSession(client: SessionClient, onChange: (state: GuidanceState) =
           const result: unknown = await client.highlight(response.tabId, response.snapshot, selection.targetId, selection.instruction,
             { sessionId: run.sessionId, requestId: run.requestId, ...(live ? { observe: true, expectedOutcome: run.selection?.expectedOutcome } : {}) });
           if (active !== run) return;
-          if (!isOverlayResponse(result)) { pause('The highlight response was invalid. Retry the request.'); return; }
+          if (!isOverlayResponse(result)) { pause('ClickPilot couldn’t point to that control. Try again.'); return; }
           if (result.ok) { run.recoveryStarted = undefined; run.navigationCount = 0; transition({ kind: 'waiting', instruction: selection.instruction, ...(selection.message ? { message: selection.message } : {}), ...(live ? { stepNumber: run.context.stepNumber, nextStep: run.selection?.nextStep, previousStatus: run.context.previousStep?.status } : {}) }); return; }
         }
         await client.clear(response.tabId, response.snapshot.snapshotId);
@@ -217,7 +217,7 @@ function createSession(client: SessionClient, onChange: (state: GuidanceState) =
     if (!run?.snapshot || run.tabId !== tabId) return;
     if (!isPageInvalidation(message) && !isGuidanceClick(message) && !isActionObservation(message)) return;
     if (message.pageKey !== run.snapshot.pageKey || message.snapshotId !== run.snapshot.snapshotId) return;
-    if (message.type === 'SNAPSHOT_INVALIDATED') { suspend('The page changed or the snapshot expired. Retry on the current page.'); return; }
+    if (message.type === 'SNAPSHOT_INVALIDATED') { suspend('This page changed. Let’s check it again.'); return; }
     if (message.type === 'PAGE_NAVIGATED') { navigation(tabId); return; }
     if (message.targetId !== run.targetId) return;
     if (message.type === 'OVERLAY_INVALIDATED') {

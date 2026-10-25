@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { test, expect, type Page } from '@playwright/test';
-import { activateToolbar, launchExtension } from './extension';
+import { activateToolbar, launchExtension, openSharingSettings, stopExtensionWorker } from './extension';
 
 // Test-only HTTP server. These browser tests NEVER contact Gemini.
 test.describe.configure({ mode: 'serial' });
@@ -59,20 +59,21 @@ test.beforeAll(async () => {
 test.afterAll(async () => { release?.(); server.closeAllConnections(); await new Promise<void>((resolve) => server.close(() => resolve())); });
 test.beforeEach(() => { requests = []; outcome = 'guidance'; release = undefined; });
 
-async function openAssistant(fixture = 'guidance.html') {
+async function openAssistant(fixture = 'guidance.html', host = '127.0.0.1') {
   const extension = await launchExtension();
   // Route extension-worker fetches to an isolated mock, even if a real local Worker is running.
   await extension.context.route('http://127.0.0.1:8787/**', (route) => route.continue({
     url: route.request().url().replace('127.0.0.1:8787', `127.0.0.1:${mockPort}`),
   }));
   const page = await extension.context.newPage();
-  await page.goto(`http://127.0.0.1:4173/${fixture}${fixture.includes('?') ? '&' : '?'}private=PRIVATE-QUERY#PRIVATE-FRAGMENT`);
+  await page.goto(`http://${host}:4173/${fixture}${fixture.includes('?') ? '&' : '?'}private=PRIVATE-QUERY#PRIVATE-FRAGMENT`);
   await activateToolbar(page, extension.extensionId);
   const panel = await extension.context.newPage();
   await panel.goto(`chrome-extension://${extension.extensionId}/sidepanel.html`);
   await panel.setViewportSize({ width: 360, height: 1000 });
   await panel.getByRole('button', { name: 'AI assistant', exact: true }).click();
-  await panel.getByLabel('Allow this panel').check();
+  await openSharingSettings(panel);
+  await panel.getByRole('checkbox', { name: /^Webpage guidance/ }).check();
   await page.bringToFront();
   return { ...extension, page, panel };
 }
@@ -84,11 +85,11 @@ async function submit(panel: Page, question = 'Find primary target') {
 test('MOCK API: panel explanation, exact tooltip, consent, safe payload and no automatic action', async () => {
   const { context, page, panel } = await openAssistant();
   try {
-    await panel.getByLabel('Allow this panel').uncheck();
+    await panel.getByRole('checkbox', { name: /^Webpage guidance/ }).uncheck();
     await panel.getByLabel('What would you like help with?').fill('Find primary target');
     await expect(panel.getByRole('button', { name: 'Ask Gemini' })).toBeDisabled();
     expect(requests).toHaveLength(0);
-    await panel.getByLabel('Allow this panel').check();
+    await panel.getByRole('checkbox', { name: /^Webpage guidance/ }).check();
     await submit(panel);
     await expect(panel.getByRole('status')).toContainText('Use the primary control');
     await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Primary target.');
@@ -266,7 +267,7 @@ for (const action of ['stop', 'replace', 'consent', 'close', 'tab', 'navigate'])
       await expect(panel.getByRole('status')).toContainText('Checking the updated page');
       if (action === 'stop') await panel.getByRole('button', { name: 'Stop', exact: true }).click();
       if (action === 'replace') { outcome = 'answer'; await submit(panel, 'New goal'); }
-      if (action === 'consent') await panel.getByLabel('Allow this panel').uncheck();
+      if (action === 'consent') await panel.getByRole('checkbox', { name: /^Webpage guidance/ }).uncheck();
       if (action === 'close') await panel.close();
       if (action === 'tab') { const other = await context.newPage(); await other.goto('http://127.0.0.1:4173/second.html'); }
       if (action === 'navigate') await page.goto('http://127.0.0.1:4173/second.html');
@@ -465,9 +466,10 @@ test('MOCK API: 6B panel destruction leaves restart-only metadata and a fresh re
     await reopened.getByRole('button', { name: 'AI assistant', exact: true }).click();
     await expect(reopened.getByText('Previous task interrupted — enter your goal to restart.')).toBeVisible();
     await expect(reopened.getByLabel('What would you like help with?')).toBeEmpty();
-    await expect(reopened.getByLabel('Allow this panel')).not.toBeChecked();
+    await openSharingSettings(reopened);
+    await expect(reopened.getByRole('checkbox', { name: /^Webpage guidance/ })).toBeChecked();
     await page.waitForTimeout(800); expect(requests).toHaveLength(1);
-    await reopened.getByLabel('Allow this panel').check(); await page.bringToFront();
+    await reopened.getByRole('checkbox', { name: /^Webpage guidance/ }).check(); await page.bringToFront();
     await submit(reopened, 'Re-entered new goal');
     await expect(page.locator('#clickpilot-overlay')).toHaveCount(1);
     expect(requests[1]!.sessionId).not.toBe(original);
@@ -508,7 +510,8 @@ test('MOCK API: 6B cross-origin requires toolbar activation and explicit Continu
 });
 
 test('MOCK API: 6B forced worker loss preserves live-panel goal without replaying the request', async () => {
-  const { context, page, panel, extensionId } = await openAssistant('navigation.html');
+  // localhost has no permanent API host grant: this exercises real activeTab retention.
+  const { context, page, panel, extensionId } = await openAssistant('navigation.html', 'localhost');
   try {
     outcome = 'delayed-workflow'; await submit(panel, 'Exact surviving worker goal');
     await expect.poll(() => requests.length).toBe(1);
@@ -519,17 +522,22 @@ test('MOCK API: 6B forced worker loss preserves live-panel goal without replayin
     expect(workerTarget).toBeDefined();
     await cdp.send('Target.closeTarget', { targetId: workerTarget!.targetId });
     await cdp.detach();
-    await expect(panel.getByRole('status')).toContainText('worker connection closed');
+    await expect(panel.locator('.guidance-state')).toContainText(/ClickPilot is reconnecting|connected again/);
     finish(); outcome = 'workflow';
     await expect(page.locator('#clickpilot-overlay')).toHaveCount(0);
     await page.waitForTimeout(1000); expect(requests).toHaveLength(1);
-    await activateToolbar(page, extensionId);
     await expect(panel.getByRole('button', { name: 'Continue task on this page' })).toBeEnabled();
     await panel.getByRole('button', { name: 'Continue task on this page' }).click();
     await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Settings.');
     expect(requests[1]!.userGoal).toBe('Exact surviving worker goal');
     expect(requests[1]!.sessionId).toBe(requests[0]!.sessionId);
     expect(requests[1]!.taskContext).toEqual({ stepNumber: 1, previousStep: null });
+    outcome = 'answer'; await submit(panel, 'What does this button do?');
+    await expect(panel.getByRole('status')).toContainText('A button offers an action');
+    await stopExtensionWorker(page, extensionId);
+    await expect(panel.getByRole('region', { name: 'Assistant reply', exact: true })).toContainText('A button offers an action');
+    await expect(panel.getByRole('button', { name: 'Continue task on this page' })).toBeEnabled();
+    expect(requests).toHaveLength(3);
   } finally { release?.(); await context.close(); }
 });
 
@@ -545,7 +553,7 @@ test('MOCK API: 6B bounded destination settling pauses on animation and Stop can
     await expect(panel.getByRole('status')).toContainText('page changed', { timeout: 8000 });
     expect(requests).toHaveLength(1);
     await panel.getByRole('button', { name: 'Continue task on this page' }).click();
-    await expect(panel.getByRole('status')).toContainText('Observing');
+    await expect(panel.getByRole('status')).toContainText('Checking this page');
     await panel.getByRole('button', { name: 'Stop', exact: true }).click();
     await page.evaluate(() => document.getAnimations().forEach((animation) => animation.cancel()));
     await page.waitForTimeout(800);

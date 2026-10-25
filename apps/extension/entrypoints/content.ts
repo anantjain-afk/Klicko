@@ -182,9 +182,15 @@ export default defineContentScript({
       sendResponse(snapshot);
     }
 
+    let pageConnection: Browser.runtime.Port | undefined;
     function onConnect(port: Browser.runtime.Port) {
       if (port.name !== 'clickpilot-page' || port.sender?.id !== browser.runtime.id) return;
-      port.onDisconnect.addListener(() => { clear(); textBubble.disable(); });
+      pageConnection = port;
+      port.onDisconnect.addListener(() => {
+        if (pageConnection !== port) return;
+        pageConnection = undefined;
+        clear(); textBubble.suspend();
+      });
       ctx.onInvalidated(() => port.disconnect());
     }
 

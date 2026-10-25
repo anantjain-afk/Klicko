@@ -87,6 +87,9 @@ describe('text client and transient session', () => {
     resolve({ protocolVersion: 1, sessionId: command.sessionId, requestId: command.requestId, pageKey: command.pageKey, selectionId: command.selectionId, result });
     await Promise.resolve(); session.onPageEvent(event('TEXT_CANCELLED'), 1);
     expect(states.at(-1)).toMatchObject({ kind: 'answered', result });
+    session.connectionLost(); session.onConnected();
+    expect(states.at(-1)).toMatchObject({ kind: 'answered', result });
+    session.onPortMessage({ type: 'TEXT_ARMED', sessionId: command.sessionId, tabId: 1, pageKey: 'page' });
     session.onPageEvent(event('TEXT_SELECTED', { selectionId: 'new' }), 1);
     expect(states.at(-1)?.result).toBeUndefined(); session.dispose();
   });
@@ -108,7 +111,7 @@ describe('text client and transient session', () => {
   });
   it('Stop survives reconnection and late enable acknowledgements until explicit Resume', () => {
     const { session, client, states, event } = setup();
-    session.stop(); const calls = client.post.mock.calls.length;
+    session.stop(); session.connectionLost(); const calls = client.post.mock.calls.length;
     session.onConnected();
     expect(client.post.mock.calls).toHaveLength(calls);
     session.onPortMessage({ type: 'TEXT_ARMED', sessionId: event('TEXT_SELECTED').sessionId, tabId: 1, pageKey: 'page' });
@@ -122,6 +125,6 @@ describe('text client and transient session', () => {
     expect(JSON.parse(init.body as string)).not.toHaveProperty('tabId');
     expect(init.redirect).toBe('error'); expect(init.cache).toBe('no-store');
     vi.stubGlobal('fetch', vi.fn(async () => new Response('x'.repeat(16385))));
-    await expect(requestText(request, new AbortController().signal)).rejects.toThrow('too large');
+    await expect(requestText(request, new AbortController().signal)).rejects.toThrow('reply safely');
   });
 });

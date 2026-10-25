@@ -5,6 +5,8 @@ import { isInspectionResponse, isOverlayResponse, isPageInvalidation, type PageS
 import { AssistantPanel } from '../../src/features/session/AssistantPanel';
 import { MockGuidance } from '../../src/features/session/MockGuidance';
 import './style.css';
+import { useAiPreferences } from '../../src/features/settings/useAiPreferences';
+import { SharingOnboarding, SharingSettings } from '../../src/features/settings/SharingSettings';
 import { useGuidanceSession } from '../../src/features/session/useGuidanceSession';
 import { isTextEvent } from '../../src/lib/text-assistant';
 import { TextAssistant } from '../../src/features/text-assistant/TextAssistant';
@@ -219,7 +221,8 @@ function ManualInspection({ session }: { session: ReturnType<typeof useGuidanceS
 
 function App() {
   const [mode, setMode] = useState<'mock' | 'manual' | 'assistant'>('mock');
-  const session = useGuidanceSession(mode === 'assistant');
+  const sharing = useAiPreferences();
+  const session = useGuidanceSession(mode === 'assistant', sharing.guidanceConsent, sharing.textConsent);
   function changeMode(next: typeof mode) {
     if (next === mode) return;
     session.controller.current?.stop();
@@ -232,16 +235,24 @@ function App() {
           <span className="brand-mark" aria-hidden="true"><span /></span>
           <span>ClickPilot</span>
         </div>
-        <span className="status">{mode === 'mock' ? 'Mock guidance · Local' : mode === 'assistant' ? 'Gemini · Guided task' : 'Manual highlights'}</span>
+        <span className="status">{!sharing.preferences.onboardingComplete ? 'Welcome' : mode === 'mock' ? 'Mock guidance · Local' : mode === 'assistant' ? 'Gemini · Guided task' : 'Manual highlights'}</span>
       </header>
+      {!sharing.ready ? <p className="connection-status" role="status">Loading your sharing choices…</p>
+        : !sharing.preferences.onboardingComplete ? <SharingOnboarding sharing={sharing} /> : <>
+      <SharingSettings sharing={sharing} />
+      {!session.connected && <div className="connection-status" aria-live="polite">
+        <p>ClickPilot is reconnecting. Your work stays in this panel.</p>
+        <button type="button" className="text-button" onClick={session.reconnect}>Reconnect</button>
+      </div>}
       <nav className="mode-switch" aria-label="Guidance mode">
         <button type="button" aria-pressed={mode === 'assistant'} onClick={() => changeMode('assistant')}>AI assistant</button>
         <button type="button" aria-pressed={mode === 'mock'} onClick={() => changeMode('mock')}>Mock guidance</button>
         <button type="button" aria-pressed={mode === 'manual'} onClick={() => changeMode('manual')}>Manual highlights</button>
       </nav>
       {mode === 'assistant' ? <AssistantPanel session={session} /> : mode === 'mock' ? <MockGuidance session={session} /> : <ManualInspection session={session} />}
-      <TextAssistant state={session.textState} controller={session.textController.current} consent={session.textConsent} onConsent={session.setTextConsent} />
-      <footer>ClickPilot waits for you. {mode === 'assistant' ? 'Gemini replies can be mistaken.' : 'Manual and mock inspection stay local.'}</footer>
+      <TextAssistant state={session.textState} controller={session.textController.current} consent={session.textConsent} />
+      </>}
+      <footer>ClickPilot waits for you. {!sharing.preferences.onboardingComplete ? 'Change sharing in Settings anytime.' : mode === 'assistant' ? 'Gemini replies can be mistaken.' : 'Manual and mock inspection stay local.'}</footer>
     </main>
   );
 }

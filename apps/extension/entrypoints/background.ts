@@ -2,6 +2,8 @@ import { CHECKPOINT_KEY, createCheckpointStore, isCheckpointCommand } from '../s
 import { isAssistantRequest, requestAssistant, type AssistantRequest } from '../src/lib/assistant';
 import { isTextCommand, requestText, type TextCommand } from '../src/lib/text-assistant';
 import { TextIdentitySchema } from '@clickpilot/shared/text-assistant';
+import { AI_PREFERENCES_KEY, readAiPreferences } from '../src/lib/preferences';
+import { createTabAccess } from '../src/lib/tab-access';
 import { isSensitivePage } from '@clickpilot/shared/privacy';
 import { defineBackground } from 'wxt/utils/define-background';
 import { browser, type Browser } from 'wxt/browser';
@@ -15,9 +17,18 @@ import {
   type PanelRequest,
 } from '../src/lib/messages';
 
-// The loopback API grant must not implicitly activate page observation.
-// After a worker restart, clicking the toolbar safely restores this small grant.
-const activatedOrigins = new Map<number, string>();
+const tabAccess = createTabAccess({
+  read: async (key) => (await browser.storage.session.get(key))[key],
+  write: (key, origin) => browser.storage.session.set({ [key]: origin }),
+  remove: (key) => browser.storage.session.remove(key),
+  // A stored activation is intent, not proof that Chrome still grants access.
+  probe: async (tabId) => { await browser.scripting.executeScript({ target: { tabId }, func: () => undefined }); },
+});
+
+async function sharingAllowed(kind: 'guidance' | 'selectedText'): Promise<boolean> {
+  try { return readAiPreferences((await browser.storage.local.get(AI_PREFERENCES_KEY))[AI_PREFERENCES_KEY])[kind]; }
+  catch { return false; }
+}
 
 function errorResponse(requestId: number, reason: 'no-tab' | 'unsupported' | 'reactivate' | 'changed'): InspectionResponse {
   return { type: 'INSPECTION_ERROR', requestId, reason };
@@ -34,7 +45,7 @@ async function inspectActiveTab(requestId: number, ownedTabId?: number, settle =
     if (ownedTabId !== undefined && tab.id !== ownedTabId) return errorResponse(requestId, 'changed');
     if (!tab.url) return errorResponse(requestId, 'reactivate');
     if (!/^https?:\/\//.test(tab.url)) return errorResponse(requestId, 'unsupported');
-    if (activatedOrigins.get(tab.id) !== new URL(tab.url).origin) return errorResponse(requestId, 'reactivate');
+    if (!await tabAccess.allows(tab.id, tab.url)) return errorResponse(requestId, 'reactivate');
 
     run.tabId = tab.id;
     if (run.abort.signal.aborted) return errorResponse(requestId, 'changed');
@@ -110,6 +121,7 @@ export default defineBackground(() => {
     tabExists: async (tabId) => { try { await browser.tabs.get(tabId); return true; } catch { return false; } },
   });
   void storageReady.catch(() => undefined);
+  void browser.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' }).catch(() => undefined);
   // The page connection closes with its panel (or worker), so page cleanup does
   // not depend on an unload message or on service-worker memory surviving.
   browser.runtime.onConnect.addListener((panel) => {
@@ -138,11 +150,11 @@ export default defineBackground(() => {
         if (page === connection) page = undefined;
       });
     }
-    function stopText() {
+    function stopText(clearPage = true) {
       ++armNumber;
       const previous = armed ?? arming; armed = undefined; arming = undefined;
       if (pending?.command.type === 'ASK_TEXT') { pending.abort.abort(); pending = undefined; }
-      if (previous) void browser.tabs.sendMessage(previous.tabId, { type: 'DISABLE_TEXT', sessionId: previous.sessionId }, { frameId: 0 }).catch(() => undefined);
+      if (clearPage && previous) void browser.tabs.sendMessage(previous.tabId, { type: 'DISABLE_TEXT', sessionId: previous.sessionId }, { frameId: 0 }).catch(() => undefined);
     }
     async function armText(sessionId: string, consent: boolean) {
       const attempt = ++armNumber;
@@ -150,8 +162,11 @@ export default defineBackground(() => {
         if (!checkpoints.isOwner(ownerId)) return;
         const [tab] = await browser.tabs.query({ active: true, lastFocusedWindow: true });
         if (closed || attempt !== armNumber) return;
-        if (tab?.id === undefined || !tab.url || isSensitivePage(tab.url)
-          || activatedOrigins.get(tab.id) !== new URL(tab.url).origin) throw new Error('Click the ClickPilot toolbar icon on a public page to enable text help.');
+        if (tab?.url && isSensitivePage(tab.url)) {
+          panel.postMessage({ type: 'TEXT_ARM_ERROR', reason: 'privacy' }); return;
+        }
+        if (tab?.id === undefined || !tab.url
+          || !await tabAccess.allows(tab.id, tab.url)) throw new Error('Click the ClickPilot toolbar icon on a public page to enable text help.');
         if (armed && armed.tabId !== tab.id) {
           void browser.tabs.sendMessage(armed.tabId, { type: 'DISABLE_TEXT', sessionId: armed.sessionId }, { frameId: 0 }).catch(() => undefined);
           armed = undefined;
@@ -175,7 +190,9 @@ export default defineBackground(() => {
         track(tab.id);
         armed = { sessionId, tabId: tab.id, pageKey: result.pageKey, consent };
         arming = undefined;
-        panel.postMessage({ type: 'TEXT_ARMED', ...armed });
+        const selectionId = 'selectionId' in result && TextIdentitySchema.safeParse({ sessionId, pageKey: result.pageKey, selectionId: result.selectionId }).success
+          ? result.selectionId : undefined;
+        panel.postMessage({ type: 'TEXT_ARMED', ...armed, selectionId });
       } catch (error) {
         if (!closed && attempt === armNumber) panel.postMessage({ type: 'TEXT_ARM_ERROR', message: error instanceof Error ? error.message : 'Text help could not connect.' });
       }
@@ -185,17 +202,19 @@ export default defineBackground(() => {
       const run = { command, abort: new AbortController() }; pending = run;
       const timer = setTimeout(() => run.abort.abort(), 25_000);
       try {
+        if (!await sharingAllowed('selectedText')) throw new Error('Selected-text sharing is off. You can change it in Settings.');
         if (!checkpoints.isOwner(ownerId) || !armed?.consent || armed.tabId !== command.tabId
           || armed.sessionId !== command.sessionId || armed.pageKey !== command.pageKey) throw new Error('Selected-text sharing is not enabled for this page.');
         const [tab] = await browser.tabs.query({ active: true, lastFocusedWindow: true });
         if (tab?.id !== command.tabId || !tab.url || isSensitivePage(tab.url)
-          || activatedOrigins.get(tab.id) !== new URL(tab.url).origin) throw new Error('The active page changed. Select text again.');
+          || !await tabAccess.allows(tab.id, tab.url)) throw new Error('The active page changed. Select text again.');
         const check = () => browser.tabs.sendMessage(command.tabId, {
           type: 'CHECK_TEXT', sessionId: command.sessionId, pageKey: command.pageKey, selectionId: command.selectionId,
         }, { frameId: 0 });
         const before: unknown = await check();
         if (!before || typeof before !== 'object' || !('selectedText' in before) || before.selectedText !== command.selectedText
           || run.abort.signal.aborted) throw new Error('The selection changed. Select the passage again.');
+        if (!await sharingAllowed('selectedText') || run.abort.signal.aborted) throw new Error('Selected-text sharing is off. You can change it in Settings.');
         const result = await requestText(command, run.abort.signal);
         const [latest] = await browser.tabs.query({ active: true, lastFocusedWindow: true });
         const after: unknown = await check();
@@ -221,16 +240,18 @@ export default defineBackground(() => {
       pending = run;
       const timer = setTimeout(() => run.abort.abort(), 25_000);
       try {
-        if (!checkpoints.isOwner(ownerId)) throw new Error('Another panel owns the task connection. Reopen this panel to start again.');
+        if (!await sharingAllowed('guidance')) throw new Error('Webpage sharing is off. You can change it in Settings.');
+        if (!checkpoints.isOwner(ownerId)) throw new Error('ClickPilot is active in another panel. Reopen this panel to start again.');
         const [tab] = await browser.tabs.query({ active: true, lastFocusedWindow: true });
         if (tab?.id !== command.tabId || !tab.url || connectedTabId !== command.tabId
-          || activatedOrigins.get(command.tabId) !== new URL(tab.url).origin) throw new Error('The active page changed. Retry on the current tab.');
+          || !await tabAccess.allows(command.tabId, tab.url)) throw new Error('This page changed or access expired. Click the ClickPilot toolbar icon on this tab, then try again.');
         const getSnapshot = () => browser.tabs.sendMessage(command.tabId, {
           type: 'GET_SNAPSHOT', pageKey: command.pageKey, snapshotId: command.snapshotId,
         }, { frameId: 0 });
         const snapshot: unknown = await getSnapshot();
-        if (!isPageSnapshot(snapshot)) throw new Error('The page snapshot expired. Retry for fresh context.');
+        if (!isPageSnapshot(snapshot)) throw new Error('This page changed. Let’s check it again.');
         if (run.abort.signal.aborted) throw new Error('The request was cancelled.');
+        if (!await sharingAllowed('guidance') || run.abort.signal.aborted) throw new Error('Webpage sharing is off. You can change it in Settings.');
         const result = await requestAssistant(command, snapshot, tab.url, run.abort.signal);
         const [current] = await browser.tabs.query({ active: true, lastFocusedWindow: true });
         const latest: unknown = await getSnapshot();
@@ -273,9 +294,21 @@ export default defineBackground(() => {
       if (!isTrackPageRequest(message)) return;
       track(message.tabId);
     });
+    const onSharingChanged = (changes: Record<string, { newValue?: unknown }>, area: string) => {
+      if (area !== 'local' || !(AI_PREFERENCES_KEY in changes)) return;
+      const preferences = readAiPreferences(changes[AI_PREFERENCES_KEY]?.newValue);
+      if (!preferences.selectedText) stopText();
+      if (!preferences.guidance && pending?.command.type === 'ASK_ASSISTANT') {
+        const previous = pending; pending = undefined; previous.abort.abort();
+      }
+    };
+    browser.storage.onChanged.addListener(onSharingChanged);
     panel.onDisconnect.addListener(() => {
+      browser.storage.onChanged.removeListener(onSharingChanged);
       closed = true;
-      stopText();
+      // Port loss may be worker suspension. The page suspends its surface;
+      // explicit Stop/withdrawal still sends DISABLE_TEXT and discards drafts.
+      stopText(false);
       void checkpoints.disconnect(ownerId).catch(() => undefined);
       pending?.abort.abort();
       pending = undefined;
@@ -293,23 +326,22 @@ export default defineBackground(() => {
   });
 
   browser.action.onClicked.addListener((tab) => {
-    if (tab.id !== undefined && tab.url && /^https?:\/\//.test(tab.url)) {
-      activatedOrigins.set(tab.id, new URL(tab.url).origin);
-    }
+    const activation = tab.id !== undefined && tab.url
+      ? tabAccess.activate(tab.id, tab.url) : Promise.resolve();
     void browser.sidePanel.open({ windowId: tab.windowId }).catch((error: unknown) => {
       console.error('Could not open the ClickPilot side panel:', error);
     });
-    void browser.runtime.sendMessage({ type: 'TEXT_ACTIVATED', tabId: tab.id }).catch(() => undefined);
+    void activation.then(() => browser.runtime.sendMessage({ type: 'TEXT_ACTIVATED', tabId: tab.id })).catch(() => undefined);
   });
   browser.tabs.onRemoved.addListener((tabId) => {
-    activatedOrigins.delete(tabId);
+    void tabAccess.remove(tabId).catch(() => undefined);
     void checkpoints.removeTab(tabId).catch(() => undefined);
   });
-  browser.tabs.onUpdated.addListener((tabId, change) => {
-    if (change.url && activatedOrigins.has(tabId)) {
-      try { if (new URL(change.url).origin !== activatedOrigins.get(tabId)) activatedOrigins.delete(tabId); }
-      catch { activatedOrigins.delete(tabId); }
-    }
+  browser.tabs.onUpdated.addListener((tabId, change, tab) => {
+    if (!change.url && change.status !== 'loading' && change.status !== 'complete') return;
+    const url = change.url ?? tab.url;
+    // A destination Chrome no longer exposes cannot retain activation intent.
+    void (url ? tabAccess.navigation(tabId, url) : tabAccess.remove(tabId)).catch(() => undefined);
   });
 
   browser.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {

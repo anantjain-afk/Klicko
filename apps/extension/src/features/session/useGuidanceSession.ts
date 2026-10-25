@@ -23,16 +23,20 @@ function askThroughPanel(port: Browser.runtime.Port, request: AssistantRequest |
     port.onMessage.addListener(receive);
     signal.addEventListener('abort', cancel, { once: true });
     if (signal.aborted) { cancel(); return; }
-    try { port.postMessage(request); } catch { cleanup(); reject(new Error('The assistant connection closed. Reopen the panel.')); }
+    try { port.postMessage(request); } catch { cleanup(); reject(new Error('ClickPilot is reconnecting. Try again in a moment.')); }
   });
 }
 
-export function useGuidanceSession(live: boolean) {
+export function useGuidanceSession(live: boolean, guidanceConsent: boolean, textConsent: boolean) {
   const [state, setState] = useState<GuidanceState>({ kind: 'idle' });
-  const [connected, setConnected] = useState(true);
+  const [retainedReply, setRetainedReply] = useState<GuidanceState | null>(null);
+  const [connected, setConnected] = useState(false);
   const [connectionId, setConnectionId] = useState(0);
   const [textState, setTextState] = useState<TextState>({ kind: 'idle', message: 'Select public text to ask about it.' });
-  const [textConsent, setTextConsent] = useState(false);
+  const sharing = useRef({ guidance: guidanceConsent, selectedText: textConsent });
+  const previousGuidanceConsent = useRef(guidanceConsent);
+  sharing.current = { guidance: guidanceConsent, selectedText: textConsent };
+  const reconnect = useRef<() => void>(() => undefined);
   const textController = useRef<ReturnType<typeof createTextSession> | null>(null);
   const controller = useRef<ReturnType<typeof createMockSession> | null>(null);
   const connection = useRef<Browser.runtime.Port | null>(null);
@@ -70,7 +74,8 @@ export function useGuidanceSession(live: boolean) {
     }
     const session = (live ? createAssistantSession : createMockSession)({
       ask: (tabId, snapshot, task, identity, signal, taskContext) => {
-        if (!port) return Promise.reject(new Error('The assistant connection is paused.'));
+        if (!sharing.current.guidance) return Promise.reject(new Error('Webpage sharing is off. You can change it in Settings.'));
+        if (!port) return Promise.reject(new Error('ClickPilot is reconnecting. Try again in a moment.'));
         return askThroughPanel(port, { type: 'ASK_ASSISTANT', tabId, pageKey: snapshot.pageKey, snapshotId: snapshot.snapshotId, userGoal: task, taskContext, ...identity }, signal);
       },
       inspect: async (requestId, tabId, settle, signal) => {
@@ -100,22 +105,29 @@ export function useGuidanceSession(live: boolean) {
         targetId, instruction, guidance,
       }),
       clear: (tabId, snapshotId) => browser.runtime.sendMessage({ type: 'STOP_INSPECTION', tabId, snapshotId }),
-    }, setState);
+    }, (next) => {
+      setState(next);
+      // A worker pause invalidates targeting, not a reply already read by the user.
+      if (next.kind !== 'connection_paused') {
+        setRetainedReply(['answer', 'clarification', 'unsupported', 'waiting'].includes(next.kind) ? next : null);
+      }
+    });
     controller.current = session;
-    setTextConsent(false);
     const textSession = createTextSession({
       post: (message) => { if (port) port.postMessage(message); },
-      ask: (command, signal) => port ? askThroughPanel(port, command, signal) : Promise.reject(new Error('The connection closed.')),
+      ask: (command, signal) => port && sharing.current.selectedText ? askThroughPanel(port, command, signal) : Promise.reject(new Error('Selected-text sharing is off or ClickPilot is reconnecting. Check Settings and try again.')),
       interruptGuidance: () => session.stop(),
     }, setTextState);
     textController.current = textSession;
+    textSession.setConsent(sharing.current.selectedText);
 
     function scheduleRecovery() {
       clearTimeout(recoveryTimer);
       recoveryTimer = setTimeout(() => { if (!disposed) void session.resumeNavigation(); }, NAVIGATION_SETTLE_MS);
     }
     function connect() {
-      if (disposed) return;
+      if (disposed || port) return;
+      clearTimeout(reconnectTimer);
       const next = browser.runtime.connect({ name: 'clickpilot-panel' });
       port = next; connection.current = next; setConnectionId((value) => value + 1);
       const receive = (value: unknown) => {
@@ -143,16 +155,19 @@ export function useGuidanceSession(live: boolean) {
         port = null; connection.current = null; setConnected(false);
         textSession.connectionLost();
         clearTimeout(recoveryTimer);
-        session.suspend('The worker connection closed. Reconnecting; your goal remains in this panel. Continue after reconnection and toolbar activation if required.', true);
+        if (session.isActive()) session.suspend('ClickPilot is reconnecting. Your goal is still here. Continue once the connection is back.', true);
         for (const finish of checkpointWaiters.values()) finish(false);
-        if (++reconnectAttempts <= 3) reconnectTimer = setTimeout(connect, 500);
+        if (++reconnectAttempts <= 3) reconnectTimer = setTimeout(connect, [250, 1000, 2500][reconnectAttempts - 1]);
       });
     }
+    function reconnectNow() { if (!port && !disposed) { reconnectAttempts = 0; connect(); } }
+    reconnect.current = reconnectNow;
+    window.addEventListener('focus', reconnectNow);
     connect();
     const onMessage = (message: unknown, sender: Browser.runtime.MessageSender) => {
       if (sender.id !== browser.runtime.id) return;
       if (message && typeof message === 'object' && 'type' in message && message.type === 'TEXT_ACTIVATED' && !sender.tab) {
-        textSession.enable(); return;
+        reconnectNow(); textSession.enable(); return;
       }
       if (sender.tab?.id === undefined || sender.frameId !== 0) return;
       textSession.onPageEvent(message, sender.tab.id);
@@ -191,6 +206,8 @@ export function useGuidanceSession(live: boolean) {
     window.addEventListener('pagehide', onPageHide);
     return () => {
       disposed = true;
+      reconnect.current = () => undefined;
+      window.removeEventListener('focus', reconnectNow);
       clearTimeout(recoveryTimer); clearTimeout(reconnectTimer);
       textSession.dispose(); textController.current = null;
       session.dispose(); controller.current = null; connection.current = null;
@@ -204,6 +221,12 @@ export function useGuidanceSession(live: boolean) {
     };
   }, [live]);
 
-  return { state, connected, controller, connection, connectionId, restartNotice, storageAvailable, textState, textController, textConsent,
-    setTextConsent: (value: boolean) => { setTextConsent(value); textController.current?.setConsent(value); } };
+  useEffect(() => {
+    if (previousGuidanceConsent.current && !guidanceConsent) controller.current?.stop();
+    previousGuidanceConsent.current = guidanceConsent;
+  }, [guidanceConsent]);
+  useEffect(() => { textController.current?.setConsent(textConsent); }, [textConsent]);
+
+  return { state, retainedReply, connected, controller, connection, connectionId, restartNotice, storageAvailable, textState, textController,
+    guidanceConsent, textConsent, reconnect: () => reconnect.current() };
 }

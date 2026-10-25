@@ -1,5 +1,7 @@
 # ClickPilot implementation plan
 
+Current work: UX-1 approved; implementation and evidence are recorded in the final section below. Earlier milestone gates are historical.
+
 Status update — 25 October 2026: the user confirmed milestone 6B is complete and approved scoped 7A implementation with the strict result union and retained side-panel explanation. The 7A branch was based on 6A; it has been fast-forwarded to existing 6B commit `109e04f` without creating a commit. Historical milestone records below are retained.
 
 Earlier status: Milestone 1 verified; milestone 2's separate privacy verification remains unconfirmed. Milestone 3 is verified in Chrome. Milestone 4 is implemented with manual verification pending. The user explicitly approved milestone 5A on 21 October 2026; the local contract is implemented and was verified by the user on 22 October 2026. Milestone 5B's revised plan was explicitly approved on 22 October 2026; implementation, automated checks and user manual verification are complete. Milestone 5B is VERIFIED; the user authorized its commit/push to milestone-5B. Milestone 6A, including the continuation clarification below, was approved for implementation on 22 October 2026 and VERIFIED by the user on 23 October 2026 after the shared highlighting correction. The user authorized committing and pushing that correction to milestone-6A. Milestone 6B was explicitly approved on 23 October 2026 by “ok , continue with 6B”; later milestones remain unapproved.
@@ -382,7 +384,7 @@ Milestone 6A, including the shared highlighting correction, was verified by the 
 
 ## Milestone 7A — Contextual text assistant
 
-**Status:** IMPLEMENTED — AWAITING USER VERIFICATION, 25 October 2026. Final automated evidence and numbered Chrome steps are recorded in PROGRESS.md. No Git commit/push, deployment, publication or next milestone is authorized.
+**Status:** VERIFIED by the user, 25 October 2026. Final automated evidence and numbered Chrome steps are recorded in PROGRESS.md. No Git commit/push, deployment, publication or next milestone is authorized.
 
 The user clarified that 6B is complete. Before coding, inspection found one clean worktree on `milestone-7A` at `79aaf6c`, while local and origin `milestone-6B` both pointed to direct descendant `109e04f`. Fast-forwarding to that existing commit resolved the discrepancy; no new commit or remote operation was performed. Keep its navigation, retained volatile goal, checkpoint owner/revision guards, storage boundary, worker reconnection and all regression tests.
 
@@ -401,4 +403,17 @@ Run corepack pnpm typecheck, corepack pnpm lint, corepack pnpm test, corepack pn
 
 ## Current approval gate — 7A
 
-Milestone 7A is implemented and AWAITING USER VERIFICATION. Final typecheck, lint, unit tests (92 API + 113 extension), build and full browser suite (128/128, including 6A/6B) passed. The user must perform the numbered Chrome checks in PROGRESS.md. On 25 October 2026 the user explicitly authorized committing the scoped 7A changes and pushing milestone-7A to the configured origin. Manual verification remains pending; no deployment, publication, merge or next milestone is authorized.
+Milestone 7A is VERIFIED. The user confirmed all manual verification is complete. Final typecheck, lint, unit tests (92 API + 113 extension), build and full browser suite (128/128, including 6A/6B) passed. The numbered Chrome checks in PROGRESS.md are confirmed complete by the user. On 25 October 2026 the user explicitly authorized committing the scoped 7A changes and pushing milestone-7A to the configured origin. No deployment, publication, merge or next milestone is authorized.
+
+## UX-1 — Reliability, onboarding and clear messaging
+
+Approved by the user on 25 October 2026 with “ok approved”, following the reviewed UX-1/UX-2 plan. Work is limited to UX-1. UX-2 requires UX-1 manual verification and separate approval under AGENTS.md.
+
+- Reproduce the worker-restart failure before fixing it. Retain only tab/origin activation intent in trusted session storage, independently recheck Chrome access, and reuse existing 6B recovery. Keep live panel goals, completed explanations and same-session unsent drafts; cancel interrupted attempts and reject late results. Use bounded connection retries plus explicit/event-driven reconnect, without idle keepalive or polling.
+- Offer short first-use setup with independent, initially unchecked guidance/selected-text sharing choices. Save only versioned booleans in trusted local storage. Provide Settings, fail closed on missing/malformed/loading/failed grants, apply revocation immediately, and enforce the specific consent in the panel and background before upload. Chrome activation and AI sharing remain separate.
+- Replace ordinary provider/snapshot jargon with plain recovery messages while keeping fixed error codes and existing backend diagnostics. Preserve privacy failures and genuine reactivation instructions.
+- Reuse existing tests; add only focused storage/activation/consent and browser cases. Run typecheck, lint, unit tests, build, full browser suite and diff checks. Provide visual evidence and numbered actual-Chrome verification in PROGRESS.md, then stop at AWAITING USER VERIFICATION.
+
+No dependency, permission, backend protocol, screenshot, buddy, voice, persistent conversation-history or deployment change is included. Existing DOM extraction, action observation, overlay rendering and checkpoint semantics remain in place.
+
+UX-2 remains planned: a chat-first panel with session-only messages, a bottom composer, unified existing guidance/text presentation, Settings and a secondary Developer view. It has not been implemented.
