@@ -14,11 +14,11 @@ function replyText(state: GuidanceState): string {
 }
 
 export function AssistantPanel() {
-  const { state, connected, controller } = useGuidanceSession(true);
+  const { state, connected, controller, restartNotice, storageAvailable } = useGuidanceSession(true);
   const [question, setQuestion] = useState('');
   const [consent, setConsent] = useState(false);
   const submitted = useRef('');
-  const busy = ['observing', 'selecting', 'highlighting', 'verifying'].includes(state.kind);
+  const busy = ['observing', 'selecting', 'highlighting', 'verifying', 'navigating'].includes(state.kind);
   const active = controller.current?.isActive() ?? false;
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -51,14 +51,19 @@ export function AssistantPanel() {
       </button>
     </form>
     <section className="guidance-progress" aria-label="Assistant reply">
+      {restartNotice && <p>Previous task interrupted — enter your goal to restart.</p>}
+      {!storageAvailable && <p>Interruption metadata is unavailable. Your goal survives only while this panel stays open.</p>}
       {submitted.current && <p className="assistant-question">You asked: {submitted.current}</p>}
       <p className="guidance-state" role={state.kind === 'error' ? 'alert' : 'status'} aria-live="polite">{replyText(state)}</p>
       <div className="guidance-actions">
-        <button className="text-button" disabled={!active && !busy} onClick={() => { submitted.current = ''; controller.current?.stop(); }}>Stop</button>
+        <button className="text-button" disabled={!active && !busy && !restartNotice} onClick={() => { submitted.current = ''; controller.current?.stop(); }}>Stop</button>
         <button className="text-button" disabled={!submitted.current || busy || !consent || !connected} onClick={() => {
-          if (active) void controller.current?.retry();
+          if (active && 'canContinue' in state && state.canContinue && state.kind !== 'recovery') void controller.current?.continueTask();
+          else if (active) void controller.current?.retry();
           else void controller.current?.start(question.trim());
         }}>Retry</button>
+        {active && 'canContinue' in state && state.canContinue && state.kind !== 'recovery' && <button className="text-button" disabled={!consent || !connected}
+          onClick={() => { void controller.current?.continueTask(); }}>Continue task on this page</button>}
         {state.kind === 'recovery' && state.canContinue && <button className="text-button" disabled={!consent || !connected}
           onClick={() => { void controller.current?.continueManually(); }}>Continue manually</button>}
         {(state.kind === 'waiting' || state.kind === 'recovery' || state.kind === 'clicked') && <button className="text-button"

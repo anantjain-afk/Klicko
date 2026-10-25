@@ -60,7 +60,7 @@ function ManualInspection() {
       if (!isPageInvalidation(message) || sender.id !== browser.runtime.id
         || sender.tab?.id !== observedTabId.current || !snapshot
         || message.pageKey !== snapshot.pageKey || message.snapshotId !== snapshot.snapshotId) return;
-      if (message.type === 'SNAPSHOT_INVALIDATED') {
+      if ((message.type === 'SNAPSHOT_INVALIDATED' || message.type === 'PAGE_NAVIGATED')) {
         clearInspection();
         setView({ kind: 'error', message: 'The page changed or the list expired. Inspect again.' });
       } else {

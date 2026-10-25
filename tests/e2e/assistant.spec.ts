@@ -380,3 +380,197 @@ for (const mode of ['', '?preexisting', '?delayed', '?animation', '?crowded', '?
     } finally { await context.close(); }
   });
 }
+
+async function checkpointValue(panel: Page): Promise<Record<string, unknown> | undefined> {
+  return panel.evaluate(async () => {
+    const api = (globalThis as unknown as { chrome: { storage: { session: { get: (key: string) => Promise<Record<string, Record<string, unknown>>> } } } }).chrome;
+    return (await api.storage.session.get('clickpilot.interruption'))['clickpilot.interruption'];
+  });
+}
+
+for (const mode of ['', '?full']) {
+  test(`MOCK API: 6B navigation ${mode || 'SPA'} retains goal and advances once per trusted action`, async () => {
+    const { context, page, panel, worker } = await openAssistant(`navigation.html${mode}`);
+    try {
+      outcome = 'workflow-check'; await submit(panel, 'Change a Vercel domain');
+      await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Settings.');
+      await page.locator('#settings').click();
+      await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Domains.', { timeout: 10000 });
+      expect(requests).toHaveLength(2);
+      expect(requests[1]!.taskContext).toMatchObject({ stepNumber: 2, previousStep: { status: 'unverifiable' } });
+      await page.locator('#domains').click();
+      await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Edit domain.', { timeout: 10000 });
+      expect(requests).toHaveLength(3);
+      expect(requests.map((r) => r.userGoal)).toEqual(Array(3).fill('Change a Vercel domain'));
+      expect(requests.map((r) => (r.taskContext as { stepNumber: number }).stepNumber)).toEqual([1, 2, 3]);
+      expect(new Set(requests.map((r) => (r.page as { pageKey: string }).pageKey)).size).toBe(3);
+      expect(new Set(requests.map((r) => (r.page as { snapshotId: string }).snapshotId)).size).toBe(3);
+      await expect(page.locator('#result')).toHaveText('No action taken');
+      const record = await checkpointValue(panel);
+      expect(Object.keys(record!).sort()).toEqual(['version', 'ownerId', 'sessionId', 'tabId', 'status', 'revision', 'expiresAt'].sort());
+      expect(JSON.stringify(record)).not.toMatch(/Vercel|Settings|Domains|http|snapshot|target|PRIVATE/);
+      const access = await worker.evaluate(async (tabId) => {
+        const api = (globalThis as unknown as { chrome: { scripting: { executeScript: (options: { target: { tabId: number }; func: () => Promise<string> }) => Promise<{ result: string }[]> } } }).chrome;
+        return api.scripting.executeScript({ target: { tabId }, func: async () => {
+          try {
+            const storage = (globalThis as unknown as { chrome: { storage: { session?: { get: (key: string) => Promise<unknown> } } } }).chrome.storage;
+            if (!storage.session) return 'blocked';
+            await storage.session.get('clickpilot.interruption'); return 'exposed';
+          } catch { return 'blocked'; }
+        } });
+      }, record!.tabId as number);
+      expect(access[0]!.result).toBe('blocked');
+      await panel.getByRole('button', { name: 'Stop', exact: true }).click();
+      await expect.poll(() => checkpointValue(panel)).toBeUndefined();
+    } finally { await context.close(); }
+  });
+}
+
+test('MOCK API: 6B manual push/replace/back/forward require Continue and reject a pending reply', async () => {
+  const { context, page, panel } = await openAssistant('navigation.html');
+  try {
+    outcome = 'delayed-workflow'; await submit(panel, 'Original navigation goal');
+    await expect.poll(() => requests.length).toBe(1);
+    await page.locator('#manual').click();
+    await expect(panel.getByRole('status')).toContainText('Page changed');
+    release!(); outcome = 'workflow';
+    await expect(panel.getByRole('button', { name: 'Continue task on this page' })).toBeVisible();
+    await panel.getByRole('button', { name: 'Continue task on this page' }).click();
+    await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Domains.');
+    expect((requests[1]!.taskContext as { stepNumber: number }).stepNumber).toBe(1);
+    for (const navigate of [() => page.locator('#replace').click(), () => page.goBack(), () => page.goForward()]) {
+      const count = requests.length;
+      await navigate();
+      await expect(panel.getByRole('button', { name: 'Continue task on this page' })).toBeVisible();
+      await page.waitForTimeout(900);
+      expect(requests).toHaveLength(count);
+      await expect(page.locator('#clickpilot-overlay')).toHaveCount(0);
+      await panel.getByRole('button', { name: 'Continue task on this page' }).click();
+      await expect(page.locator('#clickpilot-overlay')).toHaveCount(1);
+      expect(requests.at(-1)!.userGoal).toBe('Original navigation goal');
+    }
+  } finally { release?.(); await context.close(); }
+});
+
+test('MOCK API: 6B panel destruction leaves restart-only metadata and a fresh re-entered task', async () => {
+  const { context, page, panel, extensionId } = await openAssistant('navigation.html');
+  try {
+    outcome = 'workflow'; await submit(panel, 'PRIVATE original goal');
+    await expect(page.locator('#clickpilot-overlay')).toHaveCount(1);
+    const original = requests[0]!.sessionId;
+    await panel.close();
+    await expect(page.locator('#clickpilot-overlay')).toHaveCount(0);
+    const reopened = await context.newPage();
+    await reopened.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+    await reopened.getByRole('button', { name: 'AI assistant', exact: true }).click();
+    await expect(reopened.getByText('Previous task interrupted — enter your goal to restart.')).toBeVisible();
+    await expect(reopened.getByLabel('What would you like help with?')).toBeEmpty();
+    await expect(reopened.getByLabel('Allow this panel')).not.toBeChecked();
+    await page.waitForTimeout(800); expect(requests).toHaveLength(1);
+    await reopened.getByLabel('Allow this panel').check(); await page.bringToFront();
+    await submit(reopened, 'Re-entered new goal');
+    await expect(page.locator('#clickpilot-overlay')).toHaveCount(1);
+    expect(requests[1]!.sessionId).not.toBe(original);
+    expect(requests[1]!.taskContext).toEqual({ stepNumber: 1, previousStep: null });
+    expect(JSON.stringify(await checkpointValue(reopened))).not.toMatch(/PRIVATE|goal|http|target/);
+    await reopened.getByRole('button', { name: 'Stop', exact: true }).click();
+    await expect.poll(() => checkpointValue(reopened)).toBeUndefined();
+  } finally { await context.close(); }
+});
+
+test('MOCK API: 6B cross-origin requires toolbar activation and explicit Continue; tab ownership is retained', async () => {
+  const { context, page, panel, extensionId } = await openAssistant('navigation.html');
+  try {
+    outcome = 'workflow'; await submit(panel, 'Same original goal');
+    await expect(page.locator('#clickpilot-overlay')).toHaveCount(1);
+    await page.locator('#cross').click();
+    await expect(panel.getByRole('button', { name: 'Continue task on this page' })).toBeVisible();
+    await panel.getByRole('button', { name: 'Continue task on this page' }).click();
+    await expect(panel.getByRole('status')).toContainText('toolbar');
+    expect(requests).toHaveLength(1);
+    await activateToolbar(page, extensionId);
+    await panel.getByRole('button', { name: 'Continue task on this page' }).click();
+    await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Domains.');
+    expect(requests[1]!.userGoal).toBe('Same original goal');
+    const other = await context.newPage(); await other.goto('http://127.0.0.1:4173/navigation.html');
+    await activateToolbar(other, extensionId);
+    await panel.getByRole('button', { name: 'Continue task on this page' }).click();
+    await expect(panel.getByRole('status')).toContainText('page changed');
+    expect(requests).toHaveLength(2);
+    await page.bringToFront();
+    await panel.getByRole('button', { name: 'Continue task on this page' }).click();
+    await expect(page.locator('#clickpilot-overlay')).toHaveCount(1);
+    expect(requests[2]!.userGoal).toBe('Same original goal');
+    await page.close();
+    await expect(panel.getByRole('status')).toContainText('task tab closed');
+    await expect.poll(() => checkpointValue(panel)).toBeUndefined();
+  } finally { await context.close(); }
+});
+
+test('MOCK API: 6B forced worker loss preserves live-panel goal without replaying the request', async () => {
+  const { context, page, panel, extensionId } = await openAssistant('navigation.html');
+  try {
+    outcome = 'delayed-workflow'; await submit(panel, 'Exact surviving worker goal');
+    await expect.poll(() => requests.length).toBe(1);
+    const finish = release!;
+    const cdp = await context.browser()!.newBrowserCDPSession();
+    const { targetInfos } = await cdp.send('Target.getTargets');
+    const workerTarget = targetInfos.find((target) => target.type === 'service_worker' && target.url.includes(extensionId));
+    expect(workerTarget).toBeDefined();
+    await cdp.send('Target.closeTarget', { targetId: workerTarget!.targetId });
+    await cdp.detach();
+    await expect(panel.getByRole('status')).toContainText('worker connection closed');
+    finish(); outcome = 'workflow';
+    await expect(page.locator('#clickpilot-overlay')).toHaveCount(0);
+    await page.waitForTimeout(1000); expect(requests).toHaveLength(1);
+    await activateToolbar(page, extensionId);
+    await expect(panel.getByRole('button', { name: 'Continue task on this page' })).toBeEnabled();
+    await panel.getByRole('button', { name: 'Continue task on this page' }).click();
+    await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Settings.');
+    expect(requests[1]!.userGoal).toBe('Exact surviving worker goal');
+    expect(requests[1]!.sessionId).toBe(requests[0]!.sessionId);
+    expect(requests[1]!.taskContext).toEqual({ stepNumber: 1, previousStep: null });
+  } finally { release?.(); await context.close(); }
+});
+
+test('MOCK API: 6B bounded destination settling pauses on animation and Stop cancels inspection', async () => {
+  const { context, page, panel } = await openAssistant('navigation.html');
+  try {
+    outcome = 'workflow'; await submit(panel, 'Original settling goal');
+    await expect(page.locator('#clickpilot-overlay')).toHaveCount(1);
+    await page.locator('#manual').click();
+    await expect(panel.getByRole('button', { name: 'Continue task on this page' })).toBeVisible();
+    await page.evaluate(() => document.getElementById('domains')!.animate([{ opacity: 1 }, { opacity: 0.9 }], { duration: 1000, iterations: Infinity }));
+    await panel.getByRole('button', { name: 'Continue task on this page' }).click();
+    await expect(panel.getByRole('status')).toContainText('page changed', { timeout: 8000 });
+    expect(requests).toHaveLength(1);
+    await panel.getByRole('button', { name: 'Continue task on this page' }).click();
+    await expect(panel.getByRole('status')).toContainText('Observing');
+    await panel.getByRole('button', { name: 'Stop', exact: true }).click();
+    await page.evaluate(() => document.getAnimations().forEach((animation) => animation.cancel()));
+    await page.waitForTimeout(800);
+    await expect(page.locator('#clickpilot-overlay')).toHaveCount(0);
+    expect(requests).toHaveLength(1);
+    await expect.poll(() => checkpointValue(panel)).toBeUndefined();
+  } finally { await context.close(); }
+});
+
+test('MOCK API: 6B same-origin redirect chain obtains a fresh document once', async () => {
+  const { context, page, panel } = await openAssistant('navigation.html?full');
+  try {
+    await page.route('**/navigation.html?full&step=domains*', async (route) => {
+      const url = new URL(route.request().url());
+      const hop = Number(url.searchParams.get('hop') ?? 0);
+      if (hop < 3) await route.fulfill({ status: 302, headers: { location: `/navigation.html?full&step=domains&hop=${hop + 1}` } });
+      else await route.continue();
+    });
+    outcome = 'workflow'; await submit(panel, 'Original redirect goal');
+    await expect(page.locator('#clickpilot-overlay')).toHaveCount(1);
+    await page.locator('#settings').click();
+    await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Domains.', { timeout: 10000 });
+    expect(requests).toHaveLength(2);
+    expect(requests[1]!.userGoal).toBe('Original redirect goal');
+    expect(requests[1]!.taskContext).toMatchObject({ stepNumber: 2, previousStep: { status: 'unverifiable' } });
+    expect((requests[1]!.page as { pageKey: string }).pageKey).not.toBe((requests[0]!.page as { pageKey: string }).pageKey);
+  } finally { await context.close(); }
+});

@@ -31,12 +31,15 @@ export interface OverlayTarget {
 }
 
 export type PanelRequest =
-  | { type: 'INSPECT_ACTIVE_TAB'; requestId: number }
+  | { type: 'INSPECT_ACTIVE_TAB'; requestId: number; tabId?: number; settle?: boolean; inspectionToken?: string }
+  | { type: 'CANCEL_INSPECTION'; inspectionToken: string }
   | { type: 'STOP_INSPECTION'; tabId: number; snapshotId?: string }
   | ({ type: 'HIGHLIGHT_ELEMENT'; tabId: number } & OverlayTarget);
 
 export type ContentRequest =
   | { type: 'COLLECT_ELEMENTS' }
+  | { type: 'WAIT_FOR_PAGE'; inspectionToken: string }
+  | { type: 'CANCEL_PAGE_WAIT'; inspectionToken: string }
   | { type: 'GET_SNAPSHOT'; pageKey: string; snapshotId: string }
   | { type: 'CLEAR_ELEMENTS'; snapshotId?: string }
   | ({ type: 'SHOW_OVERLAY' } & OverlayTarget);
@@ -46,10 +49,11 @@ export type OverlayResponse = { type: 'OVERLAY_RESULT'; ok: boolean };
 export type PageInvalidation = {
   pageKey: string;
   snapshotId: string;
-} & ({ type: 'OVERLAY_INVALIDATED'; targetId: string } | { type: 'SNAPSHOT_INVALIDATED' });
+} & ({ type: 'OVERLAY_INVALIDATED'; targetId: string } | { type: 'SNAPSHOT_INVALIDATED' } | { type: 'PAGE_NAVIGATED' });
 
 export interface GuidanceClick extends GuidanceIdentity {
   type: 'GUIDANCE_CLICKED';
+  navigationIntent?: boolean;
   pageKey: string;
   snapshotId: string;
   targetId: string;
@@ -106,7 +110,14 @@ function hasOptionalSnapshotId(value: Record<string, unknown>): boolean {
 
 export function isPanelRequest(value: unknown): value is PanelRequest {
   if (!isRecord(value)) return false;
-  if (value.type === 'INSPECT_ACTIVE_TAB') return isId(value.requestId);
+  if (value.type === 'CANCEL_INSPECTION') return typeof value.inspectionToken === 'string' && /^[\w-]{1,80}$/.test(value.inspectionToken);
+  if (value.type === 'INSPECT_ACTIVE_TAB') {
+    return isId(value.requestId) && (value.tabId === undefined || isId(value.tabId))
+      && (value.settle === undefined || typeof value.settle === 'boolean')
+      && (value.inspectionToken === undefined || (typeof value.inspectionToken === 'string'
+        && /^[\w-]{1,80}$/.test(value.inspectionToken)))
+      && (!value.settle || value.inspectionToken !== undefined);
+  }
   if (value.type === 'STOP_INSPECTION') return isId(value.tabId) && hasOptionalSnapshotId(value);
   if (value.type === 'HIGHLIGHT_ELEMENT') return isId(value.tabId) && isOverlayTarget(value);
   return false;
@@ -114,6 +125,8 @@ export function isPanelRequest(value: unknown): value is PanelRequest {
 
 export function isContentRequest(value: unknown): value is ContentRequest {
   return isRecord(value) && (value.type === 'COLLECT_ELEMENTS'
+    || ((value.type === 'WAIT_FOR_PAGE' || value.type === 'CANCEL_PAGE_WAIT')
+      && typeof value.inspectionToken === 'string' && /^[\w-]{1,80}$/.test(value.inspectionToken))
     || (value.type === 'GET_SNAPSHOT' && isPageIdentity(value))
     || (value.type === 'CLEAR_ELEMENTS' && hasOptionalSnapshotId(value))
     || (value.type === 'SHOW_OVERLAY' && isOverlayTarget(value)));
@@ -123,7 +136,7 @@ export function isGuidanceClick(value: unknown): value is GuidanceClick {
   return isRecord(value) && value.type === 'GUIDANCE_CLICKED' && isPageIdentity(value)
     && typeof value.targetId === 'string' && /^el_\d{1,3}$/.test(value.targetId)
     && typeof value.sessionId === 'string' && value.sessionId.length > 0 && value.sessionId.length <= 80
-    && isId(value.requestId);
+    && isId(value.requestId) && (value.navigationIntent === undefined || typeof value.navigationIntent === 'boolean');
 }
 
 export function isOverlayResponse(value: unknown): value is OverlayResponse {
@@ -133,7 +146,7 @@ export function isOverlayResponse(value: unknown): value is OverlayResponse {
 export function isPageInvalidation(value: unknown): value is PageInvalidation {
   return isRecord(value) && isPageIdentity(value)
     && ((value.type === 'OVERLAY_INVALIDATED' && typeof value.targetId === 'string' && /^el_\d{1,3}$/.test(value.targetId))
-      || value.type === 'SNAPSHOT_INVALIDATED');
+      || value.type === 'SNAPSHOT_INVALIDATED' || value.type === 'PAGE_NAVIGATED');
 }
 
 export function isTrackPageRequest(value: unknown): value is { type: 'TRACK_PAGE'; tabId: number } {

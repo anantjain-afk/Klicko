@@ -1,6 +1,7 @@
 import { browser, type Browser } from 'wxt/browser';
 import { defineContentScript } from 'wxt/utils/define-content-script';
 import { collectElements } from '../src/features/observer/collect-elements';
+import { settlePage } from '../src/features/observer/settle-page';
 import { actionBaseline, observeAction } from '../src/features/observer/observe-action';
 import { showOverlay } from '../src/features/overlay/renderer';
 import { reportHighlightFailure } from '../src/features/overlay/diagnostics';
@@ -31,6 +32,8 @@ export default defineContentScript({
     let removeOverlay: (() => void) | null = null;
     let removeClickListener: (() => void) | null = null;
 
+    let settling: AbortController | undefined;
+    let settlingToken: string | undefined;
     let stopObservation: (() => void) | undefined;
 
     function clearOverlay() {
@@ -48,6 +51,7 @@ export default defineContentScript({
     }
 
     function clear() {
+      settling?.abort(); settling = undefined;
       clearOverlay();
       registry.clear();
       snapshotId = null;
@@ -60,7 +64,7 @@ export default defineContentScript({
 
     function checkNavigation() {
       if (observedUrl === location.href) return;
-      notify('SNAPSHOT_INVALIDATED');
+      notify('PAGE_NAVIGATED');
       clear();
       observedUrl = location.href;
       pageKey = crypto.randomUUID();
@@ -74,7 +78,22 @@ export default defineContentScript({
         return;
       }
 
+      if (message.type === 'CANCEL_PAGE_WAIT') {
+        if (message.inspectionToken === settlingToken) settling?.abort();
+        sendResponse({ ok: true }); return;
+      }
       checkNavigation();
+      if (message.type === 'WAIT_FOR_PAGE') {
+        settling?.abort();
+        const attempt = new AbortController();
+        settling = attempt;
+        settlingToken = message.inspectionToken;
+        void settlePage(document, attempt.signal).then((ok) => {
+          if (settling === attempt) settling = undefined;
+          sendResponse({ ok: ok && ctx.isValid });
+        });
+        return true;
+      }
       if (message.type === 'GET_SNAPSHOT') {
         sendResponse(message.pageKey === pageKey && message.snapshotId === snapshotId && currentSnapshot
           ? currentSnapshot : { ok: false });
@@ -109,7 +128,7 @@ export default defineContentScript({
               const before = baseline?.controls ?? actionBaseline(document);
               const expandedBefore = baseline ? baseline.expanded : target.getAttribute('aria-expanded');
               void browser.runtime.sendMessage({
-                type: 'GUIDANCE_CLICKED', pageKey, snapshotId, targetId: message.targetId,
+                type: 'GUIDANCE_CLICKED', navigationIntent: target.closest('a[href]') !== null, pageKey, snapshotId, targetId: message.targetId,
                 sessionId: guidance.sessionId, requestId: guidance.requestId,
               }).catch(() => undefined);
               clearOverlay();
@@ -161,12 +180,15 @@ export default defineContentScript({
       ctx.onInvalidated(() => port.disconnect());
     }
 
+    const onPageHide = () => { notify('PAGE_NAVIGATED'); clear(); };
+    window.addEventListener('pagehide', onPageHide);
     browser.runtime.onMessage.addListener(handleMessage);
     browser.runtime.onConnect.addListener(onConnect);
     const state: ObserverState = {
       isValid: () => ctx.isValid,
       dispose() {
         clear();
+        window.removeEventListener('pagehide', onPageHide);
         if (ctx.isValid) {
           browser.runtime.onMessage.removeListener(handleMessage);
           browser.runtime.onConnect.removeListener(onConnect);

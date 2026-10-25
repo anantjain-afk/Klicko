@@ -4,7 +4,9 @@ Updated: 23 October 2026.
 
 ## Current status
 
-Dynamic popup observation correction: approved on 23 October 2026; implementation is **AWAITING USER VERIFICATION**. No 6B work is authorized.
+Milestone 6B: explicitly approved on 23 October 2026 by “ok , continue with 6B”. Implementation is **AWAITING USER VERIFICATION**; evidence and numbered Chrome checks are below. No commit, push, deployment, publication or later milestone is authorized.
+
+Dynamic popup observation correction: remains separately **AWAITING USER VERIFICATION**; 6B approval does not verify it.
 
 Planning: REVIEWED — user approved starting milestone 1.
 
@@ -14,9 +16,9 @@ Milestone 2: AWAITING USER VERIFICATION.
 Milestone 3: VERIFIED by the user in Chrome on 21 October 2026.
 Milestone 4: AWAITING USER VERIFICATION — explicitly approved by the user on 21 October 2026.
 Milestone 5A: VERIFIED by the user on 22 October 2026.
-Milestone 5B: VERIFIED by the user on 22 October 2026. Its relevant branch handoff was authorized. Milestone 6A was subsequently approved and implemented as recorded below; 6B and deployment remain unapproved.
+Milestone 5B: VERIFIED by the user on 22 October 2026. Its relevant branch handoff was authorized. Milestone 6A was subsequently verified as recorded below; 6B was separately approved on 23 October 2026. Deployment remains unapproved.
 Milestone 6A: implementation approved on 22 October 2026 after the continuation clarification. **VERIFIED by the user on 23 October 2026**, including the shared highlighting correction. Evidence and limitations are recorded below.
-Shared highlighting correction: approved and **VERIFIED by the user on 23 October 2026**. The user authorized committing and pushing these changes to `milestone-6A`. Milestone 6B remains unapproved and untouched.
+Shared highlighting correction: approved and **VERIFIED by the user on 23 October 2026**. The user authorized committing and pushing these changes to `milestone-6A`. The later 6B authorization is recorded below; it does not authorize Git operations.
 
 The user confirmed milestone 1 in Chrome and explicitly authorized milestone 2 on 21 October 2026. The user then reported that inspection failed on the localhost fixture in both Brave and Chrome. A focused milestone 2 fix is implemented and automated checks pass. The user subsequently said “ok let's continue with milestone 3,” explicitly authorizing that scope. Work proceeded on milestone 3; no manual milestone 2 pass is inferred from that authorization. Verify inspection and overlays together in Chrome (and Brave if used).
 
@@ -43,8 +45,8 @@ The user subsequently said “ok , now continue with milestone 5A,” explicitly
 | 4 | Mocked single-step guidance | AWAITING USER VERIFICATION | 21 unit tests and 34 browser tests passed; manual Chrome check pending |
 | 5A | Local backend contract and validation | VERIFIED | User confirmed verification on 22 October 2026; prior automated evidence remains recorded |
 | 5B | Conversational Gemini replies with single-step visual guidance | VERIFIED | User confirmed manual verification on 22 October 2026; 55 mocked API + 37 extension unit tests; 55 Chromium tests; five actual local HTTP checks; four real Gemini outcome smoke cases passed |
-| 6A | AI-driven multi-step guidance with temporary task context | AWAITING USER VERIFICATION | Implemented; automated evidence below; manual Chrome verification pending |
-| 6B | Navigation and lifecycle recovery | NOT APPROVED | Not run |
+| 6A | AI-driven multi-step guidance with temporary task context | VERIFIED | User verified 6A and the shared highlighting correction on 23 October 2026 |
+| 6B | Navigation and lifecycle recovery | AWAITING USER VERIFICATION | Approved on 23 October 2026; implementation and actual evidence below |
 | 7 | Optional screenshot fallback | NOT APPROVED — OPTIONAL | Not run |
 | 8 | Security review and release preparation | NOT APPROVED | Not run |
 
@@ -553,3 +555,69 @@ Intermediate evidence: the first unit run found one existing assertion expecting
 - Changed eligible controls are evidence observed after the trusted action, not proof of causality or task success. Unrelated changes to actual actionable controls can still be ambiguous; ordinary unrelated prose and equivalent DOM re-renders are ignored. Existing privacy filtering remains heuristic. Actual Chrome side-panel behavior and signed-in website/model behavior require user verification; automated tests use synthetic pages and mocked AI only.
 
 **STOP: AWAITING USER VERIFICATION.** Do not begin 6B, commit, push, deploy or publish without explicit approval.
+
+
+## Milestone 6B plan clarification — 23 October 2026
+
+Status: **AWAITING PLAN APPROVAL — IMPLEMENTATION NOT APPROVED**. The user requested a plan revision only. Updated `PLAN.md` and this progress record; no runtime files were changed for this request. The dynamic popup correction remains separately AWAITING USER VERIFICATION; no verification is inferred from this planning request.
+
+- Distinguished surviving in-memory task ownership from disposable page/attempt resources. SPA/full navigation can retain the original goal, step count and bounded previous-action context while aborting stale work and obtaining a fresh sanitized snapshot. Guided continuing navigation can resume after access/identity checks; unrelated/manual or cross-origin navigation pauses for explicit Continue/reactivation. Final guidance, failed explicit checks, consent and finite request/step bounds remain enforced.
+- Distinguished worker disconnect with a live panel (retain goal, pause/reconnect safely) from actual panel destruction (goal lost; restart notice and re-entry only). No background copy, persisted goal, reconstruction from prior instructions or automatic replay is proposed.
+- Specified minimal trusted-context `storage.session` metadata, strict validation/expiry, owner/revision guards and serialized writes to prevent stale resurrection. Checkpoints contain no goal, URLs, instructions, inventories, snapshots, targets or geometry; they confer no permission or consent. Stop/termination clears metadata; panel loss can leave only a restart notice. Only `storage` permission is proposed, pending implementation approval.
+- Added explicit transitions, deduplicated navigation/request accounting, access/activation boundaries, acceptance tests and six manual Chrome verification steps. Preserved popup observation, multi-step and overlay safeguards. Corrected the older 6A observation timing sentence to reflect the implemented popup correction's named 400ms settle/five-second maximum.
+- Reviewed current source behavior: the existing panel hook calls terminal pause on tab/navigation/worker disconnect, and background page disconnect does not itself distinguish goal ownership. These are implementation changes planned for 6B, not changes made now. Consulted official Chrome activeTab/storage documentation for the permission/session-storage boundaries linked in the revised plan.
+- Validation for this documentation-only revision: `git diff --check` — exit 0. Typecheck, lint, unit/browser tests, builds, provider calls and Chrome runtime verification were not run; none is claimed for this plan update.
+
+**STOP:** Wait for explicit approval of the revised 6B plan before coding. No commit, push, deployment or publication is authorized.
+
+## Milestone 6B implementation — 23 October 2026
+
+Status: **AWAITING USER VERIFICATION**. The user explicitly approved the revised 6B plan with “ok , continue with 6B”. This authorization does not verify the outstanding popup correction or authorize Git operations, deployment, publication or milestone 7.
+
+### What changed and why
+
+- The side-panel controller retains the original goal, owned tab, finite step number and one bounded previous-step record across recoverable navigation and worker-port loss. Each invalidation replaces/aborts the attempt, clears page bindings, timers and overlays, and makes old inspection/provider/observation callbacks stale. No task owner or goal copy was moved into the worker.
+- Continuing trusted link actions can resume on an activated, same-origin destination with a fresh document/navigation token and snapshot. Duplicate content/tab signals coalesce; one continuing action advances at most one step. Navigation during an already allocated provider step pauses and retries that same step. Unload outcomes are `unverifiable`; a known failed check remains failed. Final suggestions, text-only answers, manual navigation and different origins never initiate an automatic next step.
+- Added **Continue task on this page** for explicit recovery, preserving the exact submitted goal even if the question draft changes. Tab changes retain ownership; a different active tab cannot take over the task. Closing the owned tab terminates it. Worker loss removes guidance, reconnects conservatively and waits for Continue/toolbar activation; it never replays an interrupted request. Destroying the actual panel document loses its goal, and reopening can show only a restart notice; re-entry starts a new session at step 1/null context with new consent as needed.
+- Added bounded destination settling using the existing safe extraction approach: `PAGE_SETTLE_MS = 400`, `PAGE_MAX_WAIT_MS = 5000`, 100ms samples. Document readiness and eligible-control stability/animations matter; unrelated prose does not reset settling. Temporary collections do not replace the retained registry. Scoped cancellation tokens stop destination waits. Panel navigation coalescing uses `NAVIGATION_SETTLE_MS = 700`, `NAVIGATION_MAX_MS = 8000`, and `NAVIGATION_MAX_SIGNALS = 12`. Existing 20-step, one-refresh, privacy, pointer-transparency and live-target checks remain.
+- Added only the approved **`storage` permission**. `chrome.storage.session['clickpilot.interruption']` is explicitly restricted to `TRUSTED_CONTEXTS`. Strict validation permits only version, opaque owner/session tokens, tab ID, active/interrupted status, revision and a 30-minute expiry. There are no goals, instructions, URLs, page inventories, snapshots, targets, geometry, consent or secrets in the record. Invalid/expired/missing-tab records are removed on access.
+- A small background checkpoint module serializes writes/clears and checks live port ownership and monotonic revisions. Old owners, delayed writes and stale revisions cannot overwrite a replacement or resurrect a completed clear. Disconnect removes live ownership and can leave restart-only metadata. Stop, replacement, completion, consent withdrawal and owned-tab closure clear the marker; pending offline clears are retried on reconnection. Storage failures are visible and do not pretend that metadata was saved or restore authority.
+- Added `tests/fixtures/navigation.html` with synthetic SPA/full-document Settings → Domains → Edit domain flows and manual/replace/cross-origin controls. README/local API documentation now explain recovery and its limits. No new dependency, backend change, host permission, screenshot, automatic website action, commit, push, deployment or real Gemini call was introduced.
+
+### Actual automated evidence
+
+The final full browser run passed **104/104** tests (3.0 minutes), including all eight new 6B cases, the final checkpoint-owner check and direct content-script storage-denial assertions. The earlier complete 104-test run and focused five/six-test runs also passed; the final full run supersedes them.
+
+| Exact command/check | Result |
+|---|---|
+| `corepack pnpm typecheck` | Exit 0; shared/API/extension |
+| `corepack pnpm lint` | Exit 0 |
+| `corepack pnpm test` | Exit 0; **64 API + 91 extension unit tests passed** |
+| `WRANGLER_LOG_PATH=/tmp/clickpilot-6b-wrangler.log corepack pnpm test:e2e` | Exit 0; production extension and API Worker dry-run builds passed, then **104/104 Chromium tests passed (3.0 minutes)**; isolated mocks, no Gemini/deployment |
+| `WRANGLER_LOG_PATH=/tmp/clickpilot-6b-wrangler.log corepack pnpm build` | Exit 0; standalone build passed during implementation; the final full browser command above rebuilt the final runtime changes |
+| Python production manifest/client inspection | Passed: only `activeTab`, `scripting`, `sidePanel`, `storage`; unchanged loopback host; no static content injection, provider credential configuration, provider endpoint or production highlight logger |
+| `git diff --check` | Exit 0 |
+
+Logs: `/tmp/clickpilot-6b-typecheck.log`, `/tmp/clickpilot-6b-lint.log`, `/tmp/clickpilot-6b-unit.log`, `/tmp/clickpilot-6b-build.log`, `/tmp/clickpilot-6b-e2e-final.log`. Build output: `apps/extension/.output/chrome-mv3`.
+
+Unit coverage now includes goal/step retention, duplicate navigation, failed/final/text-only cases, pending old replies, new document vs wrong tab, connection loss, finite navigation budgets, unrelated actions, checkpoint strictness/expiry/missing tabs, owner/revision conflicts, delayed writes after Stop, storage failure, destination settling, loading timeout and immediate cancellation. Browser coverage uses isolated HTTP mock replies: SPA/full navigation, push/replace/back/forward, pending-reply rejection, cross-origin reactivation, tab ownership/closure, panel destruction/re-entry, forced worker termination, animated loading timeout/Stop and same-origin redirect chains. Existing popup, overlay, privacy and cancellation regressions remain in the full suite.
+
+The initial sandboxed browser command could not bind the fixture server (`PermissionError: Operation not permitted`). Running the same local mock/Chromium checks with approved escalation resolved the environment restriction. An intermediate typecheck caught discriminated-union narrowing errors in the added navigation event; those were corrected before passing checks. No failed or unrun check is counted as a pass.
+
+### Numbered manual Chrome verification
+
+1. Run `corepack pnpm dev:api` with the existing backend-only configuration and `python3 -m http.server 4173 --directory tests/fixtures` in separate terminals. At `chrome://extensions`, reload the unpacked extension from `apps/extension/.output/chrome-mv3` and check its new `storage` permission. Open `http://127.0.0.1:4173/navigation.html`, click the ClickPilot toolbar icon, select **AI assistant**, read/accept consent and submit **Change a Vercel domain**. Watch page, panel and worker consoles for unexpected errors. No website action should happen before your click.
+2. Follow Settings → Domains → Edit domain yourself when highlighted. Expect the original goal to stay unchanged, one new step per continuing link, fresh page/snapshot identity and unverified navigation status. Repeat at `navigation.html?full` for full document replacement. Inspect only synthetic request payloads: the goal, finite step count and one previous action are retained; no private values, old target geometry or history are restored. Actual Gemini selection can vary; automated tests establish deterministic recovery using mocks.
+3. In separate runs use **Manual route**, **Replace route**, Back/Forward, or navigate while Gemini is replying. Expect the previous overlay/reply to clear and **Continue task on this page**, without a new question or automatic request. Use **Different origin**: Continue alone must not grant access; click the toolbar on that destination, then Continue. Switch tabs: the other tab cannot inherit the task; returning to the owned tab offers fresh continuation. Close the owned tab: expect task termination and marker removal. Try a protected page: expect unsupported/reactivation wording without silent access expansion.
+4. With the panel document alive, stop its extension worker using Chrome's worker tooling (where available, `chrome://serviceworker-internals`, the matching `chrome-extension://<ClickPilot ID>/` worker, **Stop**). Keep the actual side panel open. Expect removed guidance and a connection pause, retained goal, no replay, reconnection and explicit Continue after toolbar reactivation if requested. Return to the owned fixture tab before continuing. Separately leave DevTools detached to observe natural suspension; record the behavior Chrome actually exhibits. The [Chromium service-worker debugging reference](https://new.chromium.org/blink/serviceworker/service-worker-faq/) describes the internal worker view; the forced automated test uses CDP termination, not a claim about natural suspension timing.
+5. Close/reopen the real side panel during a reply, popup observation and navigation in separate runs. If Chrome preserves the hidden document, its task can remain paused in memory. Force actual document destruction by reloading the panel document with panel DevTools if needed. Reopening a destroyed document must show only **Previous task interrupted — enter your goal to restart** when valid metadata remains: no restored question, consent, instruction or overlay. Re-entering a goal must start a new session at step 1/null context. Repeat after Stop/completion/consent withdrawal: expect no marker/restart notice once the clear succeeds.
+6. In panel/worker DevTools evaluate `chrome.storage.session.get('clickpilot.interruption')` using synthetic fixture data only. During the task expect exactly the allowed metadata, with no question, URL, page content, instructions, target or coordinates; after Stop expect no record. Separately corrupt/expire or remove the fixture record: reopening must require re-entry, never infer a goal. Repeat the existing popup and fake sensitive-marker checks. Stale highlights, late replies, changed goals, request loops, unsolicited website actions, exposed task text in storage or unexpected console errors fail verification.
+
+### Known limits and stop gate
+
+- Automatic navigation continuation is deliberately conservative for real highlighted links. Button-driven JavaScript routes can pause for Continue rather than guessing that a later unrelated navigation was caused by the click. The original goal survives in either case. Same-URL history-state changes are not treated as a distinct URL navigation; fresh DOM observation still handles eligible-control changes.
+- Settling is a bounded control-inventory heuristic, not proof that a website has finished all work. Redirects or routes changing during inspection can pause; continuous animations/loading time out. Existing top-level DOM, 150-control, sensitive-content filtering and five-second popup observation limits remain. Cross-origin recovery always requires explicit continuation and actual browser access; worker restarts conservatively require toolbar activation.
+- No agent-run real Gemini calls or signed-in website verification were performed. The automated panel HTML tab is not the real Chrome side panel. Forced CDP worker termination is covered; natural suspension and Chrome's hidden-vs-destroyed panel behavior remain manual checks. If transport/storage fails, a clear may wait for reconnection or expiry; a leftover marker still cannot restore a goal, consent, permission or targeting state.
+- The popup correction remains separately awaiting user verification. No historical verification of earlier milestones is inferred here.
+
+**STOP: AWAITING USER VERIFICATION.** Do not begin milestone 7, commit, push, deploy or publish without explicit authorization.

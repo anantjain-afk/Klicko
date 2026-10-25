@@ -24,7 +24,7 @@ function setup(nextStep = 'after_user_action', check = false) {
   const session = createAssistantSession(client, (state) => states.push(state));
   function event(type: string, extra = {}) {
     const call = client.ask.mock.calls.at(-1)!;
-    return { type, ...call[3], pageKey: call[1].pageKey, snapshotId: call[1].snapshotId, targetId: 'el_1', ...extra };
+    return { type, navigationIntent: true, ...call[3], pageKey: call[1].pageKey, snapshotId: call[1].snapshotId, targetId: 'el_1', ...extra };
   }
   function click() { session.onPageEvent(event('GUIDANCE_CLICKED'), 1); }
   async function observed(changed = true, status = 'unverifiable') {
@@ -161,4 +161,115 @@ describe('bounded AI continuation', () => {
     session.stop(); await vi.advanceTimersByTimeAsync(10_000);
     expect(states.at(-1)?.kind).toBe('stopped');
   });
+});
+
+describe('surviving task recovery', () => {
+  it('coalesces navigation signals, keeps the goal, advances once and records unload as unverified', async () => {
+    const { session, client, click, states } = setup('after_user_action', true);
+    await session.start('Change a Vercel domain'); click();
+    session.navigation(1); session.navigation(1); session.navigation(1);
+    await session.resumeNavigation(); await session.resumeNavigation();
+    expect(client.ask).toHaveBeenCalledTimes(2);
+    expect(client.ask.mock.calls[1]![2]).toBe('Change a Vercel domain');
+    expect(client.ask.mock.calls[1]![5]).toEqual({ stepNumber: 2, previousStep: {
+      action: 'Click Settings.', event: 'trusted_click', status: 'unverifiable',
+    } });
+    expect(states.at(-1)?.kind).toBe('waiting');
+    session.dispose();
+  });
+
+  it.each(['manual', 'cross-origin', 'failed-check', 'final', 'answer'])('%s navigation waits for explicit Continue and keeps the same step', async (mode) => {
+    const { session, client, click, observed, result, states } = setup(mode === 'final' ? 'none' : 'after_user_action', true);
+    if (mode === 'answer') result({ kind: 'answer', message: 'A text answer.' });
+    await session.start('Original goal');
+    if (['cross-origin', 'failed-check', 'final'].includes(mode)) click();
+    if (mode === 'failed-check') await observed(true, 'not_verified');
+    session.navigation(1, mode !== 'cross-origin');
+    await session.resumeNavigation();
+    expect(client.ask).toHaveBeenCalledOnce();
+    expect(states.at(-1)).toMatchObject({ kind: 'paused', canContinue: true });
+    await session.continueTask();
+    expect(client.ask.mock.calls[1]![2]).toBe('Original goal');
+    expect(client.ask.mock.calls[1]![5].stepNumber).toBe(1);
+    if (mode === 'failed-check') expect(client.ask.mock.calls[1]![5].previousStep?.status).toBe('not_verified');
+    session.dispose();
+  });
+
+  it('ignores the old provider reply after navigation and retries the allocated step', async () => {
+    const { session, client, states } = setup();
+    const ask = client.ask.getMockImplementation()!;
+    let finish!: () => void;
+    client.ask.mockImplementationOnce(async (...args) => {
+      await new Promise<void>((resolve) => { finish = resolve; });
+      return ask(...args);
+    });
+    const pending = session.start('Exact original goal');
+    await vi.waitFor(() => expect(client.ask).toHaveBeenCalledOnce());
+    session.navigation(1); await session.resumeNavigation();
+    finish(); await pending;
+    expect(client.highlight).not.toHaveBeenCalled();
+    expect(states.at(-1)?.kind).toBe('paused');
+    await session.continueTask();
+    expect(client.ask.mock.calls[1]![5].stepNumber).toBe(1);
+    expect(client.ask.mock.calls[1]![2]).toBe('Exact original goal');
+    expect(client.ask.mock.calls[1]![3].requestId).toBeGreaterThan(client.ask.mock.calls[0]![3].requestId);
+    session.dispose();
+  });
+
+  it('worker disconnect and tab change retain task ownership; Stop removes it', async () => {
+    const { session, client, states } = setup();
+    await session.start('Exact original goal');
+    session.suspend('Worker disconnected', true);
+    expect(states.at(-1)?.kind).toBe('connection_paused');
+    expect(session.ownedTab()).toBe(1);
+    await session.continueTask();
+    expect(client.ask.mock.calls[1]![2]).toBe('Exact original goal');
+    session.suspend('Tab changed');
+    session.stop(); await session.continueTask();
+    expect(client.ask).toHaveBeenCalledTimes(2);
+    await session.start('New goal');
+    expect(client.ask.mock.calls[2]![5]).toEqual({ stepNumber: 1, previousStep: null });
+    session.dispose();
+  });
+
+  it('repeated navigation has a finite budget and late navigation cannot revive Stop', async () => {
+    const { session, client, states, click } = setup();
+    await session.start('Original'); click();
+    for (let i = 0; i < 20; i++) session.navigation(1);
+    await session.resumeNavigation();
+    expect(states.at(-1)).toMatchObject({ kind: 'paused', canContinue: true });
+    expect(client.ask).toHaveBeenCalledOnce();
+    session.stop(); session.navigation(1); await session.resumeNavigation();
+    expect(states.at(-1)?.kind).toBe('stopped');
+  });
+});
+
+it('requires explicit continuation for navigation unrelated to the clicked control', async () => {
+  const { session, client, states, event } = setup();
+  await session.start('Original goal');
+  session.onPageEvent(event('GUIDANCE_CLICKED', { navigationIntent: false }), 1);
+  session.navigation(1); await session.resumeNavigation();
+  expect(client.ask).toHaveBeenCalledOnce();
+  expect(states.at(-1)).toMatchObject({ kind: 'paused', canContinue: true });
+  await session.continueTask();
+  expect(client.ask.mock.calls[1]![2]).toBe('Original goal');
+  expect(client.ask.mock.calls[1]![5].stepNumber).toBe(1);
+  session.dispose();
+});
+
+it('fresh recovery accepts a new document but never silently binds another tab', async () => {
+  const { session, client, states } = setup();
+  const inspect = client.inspect.getMockImplementation()!;
+  await session.start('Bound goal'); session.suspend('Tab changed');
+  client.inspect.mockImplementationOnce(async (id) => ({ ...await inspect(id), tabId: 2 }));
+  await session.continueTask(); expect(client.ask).toHaveBeenCalledOnce();
+  expect(session.ownedTab()).toBe(1);
+  expect(states.at(-1)).toMatchObject({ kind: 'paused', canContinue: true });
+  client.inspect.mockImplementationOnce(async (id) => {
+    const next = await inspect(id); next.snapshot.pageKey = 'new-document'; return next;
+  });
+  await session.continueTask();
+  expect(client.ask.mock.calls[1]![1].pageKey).toBe('new-document');
+  expect(client.ask.mock.calls[1]![2]).toBe('Bound goal');
+  session.dispose();
 });

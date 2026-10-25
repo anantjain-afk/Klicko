@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ClickPilot navigation fixture</title>
+<style>body { margin: 32px; font: 16px/1.5 system-ui; } button, a { display: inline-block; padding: 12px; margin: 8px; } [hidden] { display:none; }</style></head>
+<body>
+<h1>Synthetic navigation task</h1><p>Ask “Change a Vercel domain”. These are fake controls. Use ?full for full-page navigation.</p>
+<main><a id="settings" href="?full&step=domains">Settings</a><a id="domains" href="?full&step=edit" hidden>Domains</a><button id="edit" hidden>Edit domain</button></main>
+<button id="manual">Manual route</button><button id="replace">Replace route</button><button id="cross">Different origin</button><output id="result">No action taken</output>
+<script>
+  function render() {
+    const step = new URLSearchParams(location.search).get('step');
+    document.getElementById('settings').hidden = !!step;
+    document.getElementById('domains').hidden = step !== 'domains';
+    document.getElementById('edit').hidden = step !== 'edit';
+  }
+  if (!new URLSearchParams(location.search).has('full')) {
+    for (const [id, step] of [['settings', 'domains'], ['domains', 'edit']]) {
+      document.getElementById(id).onclick = (event) => { event.preventDefault(); history.pushState({}, '', '?step=' + step); render(); };
+    }
+  }
+  window.onpopstate = render;
+  document.getElementById('manual').onclick = () => { history.pushState({}, '', '?step=domains'); render(); };
+  document.getElementById('replace').onclick = () => { history.replaceState({}, '', '?step=edit'); render(); };
+  document.getElementById('cross').onclick = () => { location.href = 'http://localhost:4173/navigation.html?step=domains'; };
+  document.getElementById('edit').onclick = () => { document.getElementById('result').textContent = 'User edited fake domain'; };
+  render();
+</script>
+</body></html>

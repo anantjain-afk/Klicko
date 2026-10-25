@@ -6,13 +6,16 @@ import { isMockSelection, mockSelection, type MockScenario } from './mock';
 
 export type GuidanceState =
   | { kind: 'idle' }
+  | { kind: 'navigating' | 'connection_paused'; message: string; canContinue?: boolean }
   | { kind: 'observing' | 'selecting' | 'highlighting'; attempt: number }
   | { kind: 'waiting'; instruction: string; message?: string; stepNumber?: number; nextStep?: 'none' | 'after_user_action'; previousStatus?: string }
   | { kind: 'verifying' | 'recovery' | 'confirmed' | 'answer' | 'clicked' | 'clarification' | 'unsupported' | 'paused' | 'error' | 'stopped'; message: string; canContinue?: boolean };
 
 export interface SessionClient {
   ask?: (tabId: number, snapshot: PageSnapshot, task: string, identity: GuidanceIdentity, signal: AbortSignal, context: TaskContext) => Promise<unknown>;
-  inspect: (requestId: number) => Promise<unknown>;
+  inspect: (requestId: number, tabId?: number, settle?: boolean, signal?: AbortSignal) => Promise<unknown>;
+  checkpoint?: (sessionId: string, tabId: number) => Promise<boolean>;
+  endCheckpoint?: (sessionId: string) => void;
   track: (tabId: number) => void;
   highlight: (tabId: number, snapshot: PageSnapshot, targetId: string, instruction: string, identity: GuidanceIdentity & { observe?: boolean; expectedOutcome?: ExpectedOutcome }) => Promise<unknown>;
   clear: (tabId: number, snapshotId: string) => Promise<unknown>;
@@ -29,7 +32,17 @@ interface ActiveRun extends GuidanceIdentity {
   lastFingerprint?: string;
   scenario: MockScenario;
   observationTimeout?: ReturnType<typeof setTimeout>;
+  navigating?: boolean;
+  autoResume?: boolean;
+  navigationIntent?: boolean;
+  recoveryStarted?: number;
+  navigationCount?: number;
+  settle?: boolean;
 }
+
+export const NAVIGATION_SETTLE_MS = 700;
+export const NAVIGATION_MAX_MS = 8000;
+export const NAVIGATION_MAX_SIGNALS = 12;
 
 const INSPECTION_ERRORS = {
   'no-tab': 'No active tab was found. Open a website and try again.',
@@ -51,12 +64,56 @@ function createSession(client: SessionClient, onChange: (state: GuidanceState) =
     clearTimeout(run.observationTimeout);
     if (run.tabId !== undefined && run.snapshot) void client.clear(run.tabId, run.snapshot.snapshotId).catch(() => undefined);
   }
-  function cancel() {
+  function cancel(clearCheckpoint = true) {
     const previous = active;
     active = null;
     if (previous) release(previous);
+    if (clearCheckpoint) client.endCheckpoint?.(previous?.sessionId ?? 'notice');
   }
   function pause(message: string) { cancel(); transition({ kind: 'paused', message }); }
+
+  // Replace the attempt object so every pending callback immediately becomes stale.
+  function suspend(message: string, connection = false) {
+    const run = active;
+    if (!live || !run) { pause(message); return; }
+    active = { ...run, abort: new AbortController(), snapshot: undefined, targetId: undefined,
+      selection: undefined, context: structuredClone(run.context), navigating: false, autoResume: false, settle: true };
+    if (active.context.previousStep?.status === 'pending') active.context.previousStep.status = 'unverifiable';
+    release(run);
+    transition({ kind: connection ? 'connection_paused' : 'paused', message, canContinue: true });
+  }
+
+  function navigation(tabId: number, allowAutomatic = true) {
+    const run = active;
+    if (!run || run.tabId !== tabId) return;
+    if (!live) { pause('Page changed. Retry on the current page.'); return; }
+    const automatic = run.navigating ? run.autoResume && allowAutomatic
+      : state.kind === 'verifying' && run.selection?.nextStep === 'after_user_action'
+        && run.context.previousStep?.status === 'pending' && run.navigationIntent === true && allowAutomatic;
+    const started = run.recoveryStarted ?? Date.now();
+    const count = (run.navigationCount ?? 0) + 1;
+    const previousStep = run.context.previousStep ? { ...run.context.previousStep } : null;
+    if (previousStep?.status === 'pending') previousStep.status = 'unverifiable';
+    active = { ...run, abort: new AbortController(), snapshot: undefined, targetId: undefined, selection: undefined,
+      context: { ...run.context, previousStep }, navigating: true, autoResume: automatic,
+      recoveryStarted: started, navigationCount: count, settle: true };
+    release(run);
+    if (count > NAVIGATION_MAX_SIGNALS || Date.now() - started > NAVIGATION_MAX_MS) {
+      active.navigating = false; active.autoResume = false;
+      transition({ kind: 'paused', canContinue: true, message: 'Page changed repeatedly or kept loading. Continue task on this page when it is ready.' });
+    } else transition({ kind: 'navigating', canContinue: true, message: 'Page changed. Waiting for the destination before continuing…' });
+  }
+
+  async function resumeNavigation() {
+    const run = active;
+    if (!run?.navigating) return;
+    run.navigating = false;
+    if (!run.autoResume) {
+      transition({ kind: 'paused', canContinue: true, message: 'Page changed. Continue task on this page after checking access.' }); return;
+    }
+    run.autoResume = false;
+    await advance(run);
+  }
 
   async function start(task: string, scenario: MockScenario = 'normal') {
     cancel();
@@ -74,7 +131,7 @@ function createSession(client: SessionClient, onChange: (state: GuidanceState) =
         run.requestId = ++requestNumber;
         run.targetId = undefined;
         transition({ kind: 'observing', attempt });
-        const response: unknown = await client.inspect(run.requestId);
+        const response: unknown = await client.inspect(run.requestId, run.tabId, run.settle, run.abort.signal);
         if (active !== run) {
           if (isInspectionResponse(response) && response.type === 'INSPECTION_RESULT') {
             void client.clear(response.tabId, response.snapshot.snapshotId).catch(() => undefined);
@@ -84,14 +141,19 @@ function createSession(client: SessionClient, onChange: (state: GuidanceState) =
         if (!isInspectionResponse(response) || response.requestId !== run.requestId) {
           pause('The inspection response was invalid. Retry the request.'); return;
         }
-        if (response.type === 'INSPECTION_ERROR') { pause(INSPECTION_ERRORS[response.reason]); return; }
-        if (run.tabId !== undefined && (run.tabId !== response.tabId || run.snapshot?.pageKey !== response.snapshot.pageKey)) {
+        if (response.type === 'INSPECTION_ERROR') { suspend(INSPECTION_ERRORS[response.reason]); return; }
+        if (run.tabId !== undefined && (run.tabId !== response.tabId || (run.snapshot && run.snapshot.pageKey !== response.snapshot.pageKey))) {
           void client.clear(response.tabId, response.snapshot.snapshotId).catch(() => undefined);
-          pause('Page changed. Start a new task on the current page.'); return;
+          suspend('Tab changed. Return to the task tab and Continue task on this page.'); return;
         }
         run.tabId = response.tabId;
         run.snapshot = response.snapshot;
         client.track(response.tabId);
+        if (client.checkpoint) {
+          const stored = await client.checkpoint(run.sessionId, response.tabId);
+          if (active !== run) return;
+          void stored; // Storage failure is reported by the hook; the live goal is still usable.
+        }
         transition({ kind: 'selecting', attempt });
         let selection: { kind: 'highlight'; targetId: string; instruction: string; message?: string };
         if (live) {
@@ -136,15 +198,15 @@ function createSession(client: SessionClient, onChange: (state: GuidanceState) =
             { sessionId: run.sessionId, requestId: run.requestId, ...(live ? { observe: true, expectedOutcome: run.selection?.expectedOutcome } : {}) });
           if (active !== run) return;
           if (!isOverlayResponse(result)) { pause('The highlight response was invalid. Retry the request.'); return; }
-          if (result.ok) { transition({ kind: 'waiting', instruction: selection.instruction, ...(selection.message ? { message: selection.message } : {}), ...(live ? { stepNumber: run.context.stepNumber, nextStep: run.selection?.nextStep, previousStatus: run.context.previousStep?.status } : {}) }); return; }
+          if (result.ok) { run.recoveryStarted = undefined; run.navigationCount = 0; transition({ kind: 'waiting', instruction: selection.instruction, ...(selection.message ? { message: selection.message } : {}), ...(live ? { stepNumber: run.context.stepNumber, nextStep: run.selection?.nextStep, previousStatus: run.context.previousStep?.status } : {}) }); return; }
         }
         await client.clear(response.tabId, response.snapshot.snapshotId);
         if (active !== run) return;
       }
-      pause('The target stayed unavailable after one refresh of the page inspection. Make sure it is visible and unobstructed, then Retry.');
+      suspend('The target stayed unavailable after one refresh of the page inspection. Make sure it is visible and unobstructed, then Retry.');
     } catch (error) {
       if (active === run) {
-        cancel(); transition({ kind: 'error', message: live && error instanceof Error && error.message.length <= 240
+        release(run); active = { ...run, abort: new AbortController(), snapshot: undefined, targetId: undefined }; transition({ kind: 'error', message: live && error instanceof Error && error.message.length <= 240
           ? error.message : 'Could not continue guidance. Check the page connection and Retry.' });
       }
     }
@@ -155,7 +217,8 @@ function createSession(client: SessionClient, onChange: (state: GuidanceState) =
     if (!run?.snapshot || run.tabId !== tabId) return;
     if (!isPageInvalidation(message) && !isGuidanceClick(message) && !isActionObservation(message)) return;
     if (message.pageKey !== run.snapshot.pageKey || message.snapshotId !== run.snapshot.snapshotId) return;
-    if (message.type === 'SNAPSHOT_INVALIDATED') { pause('The page changed or the snapshot expired. Retry on the current page.'); return; }
+    if (message.type === 'SNAPSHOT_INVALIDATED') { suspend('The page changed or the snapshot expired. Retry on the current page.'); return; }
+    if (message.type === 'PAGE_NAVIGATED') { navigation(tabId); return; }
     if (message.targetId !== run.targetId) return;
     if (message.type === 'OVERLAY_INVALIDATED') {
       if (state.kind === 'waiting') pause('The target is no longer visible or available. Restore it and Retry.');
@@ -165,6 +228,7 @@ function createSession(client: SessionClient, onChange: (state: GuidanceState) =
     if (live) {
       if (message.type === 'GUIDANCE_CLICKED') {
         if (state.kind !== 'waiting' && state.kind !== 'highlighting') return;
+        run.navigationIntent = message.navigationIntent === true;
         run.context.previousStep = { action: run.selection!.instruction, event: 'trusted_click', status: 'pending' };
         transition({ kind: run.selection?.nextStep === 'none' ? 'clicked' : 'verifying',
           message: run.selection?.nextStep === 'none'
@@ -207,17 +271,26 @@ function createSession(client: SessionClient, onChange: (state: GuidanceState) =
     }
     const next: ActiveRun = { ...run, abort: new AbortController(),
       context: { stepNumber: run.context.stepNumber + 1, previousStep: run.context.previousStep ? { ...run.context.previousStep } : null },
-      targetId: undefined, selection: undefined };
+      targetId: undefined, selection: undefined, observationTimeout: undefined };
     active = next;
     release(run);
     await requestStep(next);
   }
 
   return {
-    start, onPageEvent, pause,
+    start, onPageEvent, pause, suspend, navigation, resumeNavigation,
+    ownedTab: () => active?.tabId,
+    async continueTask() {
+      const run = active;
+      if (!run || !('canContinue' in state) || !state.canContinue || state.kind === 'recovery') return;
+      const next: ActiveRun = { ...run, abort: new AbortController(), snapshot: undefined, targetId: undefined,
+        selection: undefined, navigating: false, autoResume: false, recoveryStarted: undefined, navigationCount: 0,
+        settle: true, lastFingerprint: undefined, context: structuredClone(run.context) };
+      active = next; release(run); await requestStep(next);
+    },
     async retry() {
       const run = active;
-      if (!run || ['observing', 'selecting', 'highlighting', 'verifying'].includes(state.kind)) return;
+      if (!run || ['observing', 'selecting', 'highlighting', 'verifying', 'navigating', 'connection_paused'].includes(state.kind)) return;
       const next: ActiveRun = { ...run, abort: new AbortController(), targetId: undefined, selection: undefined, lastFingerprint: undefined,
         context: structuredClone(run.context) };
       active = next;
@@ -234,7 +307,8 @@ function createSession(client: SessionClient, onChange: (state: GuidanceState) =
       cancel(); transition({ kind: 'confirmed', message: 'Task completion confirmed by you.' });
     },
     stop() { cancel(); transition({ kind: 'stopped', message: 'Guidance stopped. Submit a task to start again.' }); },
-    dispose: cancel,
+    dispose: () => cancel(),
+    destroy: () => cancel(false),
     isActive: () => active !== null,
   };
 }
