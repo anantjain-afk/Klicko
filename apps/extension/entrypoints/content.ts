@@ -7,6 +7,8 @@ import { showOverlay } from '../src/features/overlay/renderer';
 import { reportHighlightFailure } from '../src/features/overlay/diagnostics';
 import { isMockFixtureUrl } from '../src/features/session/mock';
 import { isContentRequest, type OverlayResponse, type PageSnapshot, type PageInvalidation } from '../src/lib/messages';
+import { createTextBubble } from '../src/features/text-assistant/bubble';
+import { isTextPageCommand } from '../src/lib/text-assistant';
 
 interface ObserverState {
   isValid: () => boolean;
@@ -35,6 +37,9 @@ export default defineContentScript({
     let settling: AbortController | undefined;
     let settlingToken: string | undefined;
     let stopObservation: (() => void) | undefined;
+    const textBubble = createTextBubble(() => pageKey, () => ctx.isValid, (event) => {
+      void browser.runtime.sendMessage(event).catch(() => undefined);
+    });
 
     function clearOverlay() {
       stopObservation?.();
@@ -71,6 +76,9 @@ export default defineContentScript({
     }
 
     function handleMessage(message: unknown, sender: { id?: string }, sendResponse: (response: PageSnapshot | OverlayResponse | { ok: boolean }) => void) {
+      if (ctx.isValid && sender.id === browser.runtime.id && isTextPageCommand(message)) {
+        checkNavigation(); sendResponse(textBubble.handle(message)); return;
+      }
       if (!ctx.isValid || sender.id !== browser.runtime.id || !isContentRequest(message)) return;
       if (message.type === 'CLEAR_ELEMENTS') {
         if (message.snapshotId === undefined || message.snapshotId === snapshotId) clear();
@@ -176,11 +184,11 @@ export default defineContentScript({
 
     function onConnect(port: Browser.runtime.Port) {
       if (port.name !== 'clickpilot-page' || port.sender?.id !== browser.runtime.id) return;
-      port.onDisconnect.addListener(clear);
+      port.onDisconnect.addListener(() => { clear(); textBubble.disable(); });
       ctx.onInvalidated(() => port.disconnect());
     }
 
-    const onPageHide = () => { notify('PAGE_NAVIGATED'); clear(); };
+    const onPageHide = () => { notify('PAGE_NAVIGATED'); clear(); textBubble.disable(); };
     window.addEventListener('pagehide', onPageHide);
     browser.runtime.onMessage.addListener(handleMessage);
     browser.runtime.onConnect.addListener(onConnect);
@@ -188,6 +196,7 @@ export default defineContentScript({
       isValid: () => ctx.isValid,
       dispose() {
         clear();
+        textBubble.dispose();
         window.removeEventListener('pagehide', onPageHide);
         if (ctx.isValid) {
           browser.runtime.onMessage.removeListener(handleMessage);

@@ -1,6 +1,6 @@
 import { useRef, useState, type FormEvent } from 'react';
 import type { GuidanceState } from './session';
-import { useGuidanceSession } from './useGuidanceSession';
+import type { useGuidanceSession } from './useGuidanceSession';
 
 function replyText(state: GuidanceState): string {
   switch (state.kind) {
@@ -13,8 +13,8 @@ function replyText(state: GuidanceState): string {
   }
 }
 
-export function AssistantPanel() {
-  const { state, connected, controller, restartNotice, storageAvailable } = useGuidanceSession(true);
+export function AssistantPanel({ session }: { session: ReturnType<typeof useGuidanceSession> }) {
+  const { state, connected, controller, restartNotice, storageAvailable } = session;
   const [question, setQuestion] = useState('');
   const [consent, setConsent] = useState(false);
   const submitted = useRef('');
@@ -56,7 +56,7 @@ export function AssistantPanel() {
       {submitted.current && <p className="assistant-question">You asked: {submitted.current}</p>}
       <p className="guidance-state" role={state.kind === 'error' ? 'alert' : 'status'} aria-live="polite">{replyText(state)}</p>
       <div className="guidance-actions">
-        <button className="text-button" disabled={!active && !busy && !restartNotice} onClick={() => { submitted.current = ''; controller.current?.stop(); }}>Stop</button>
+        <button className="text-button" disabled={!active && !busy && !restartNotice} onClick={() => { session.textController.current?.stop(); submitted.current = ''; controller.current?.stop(); }}>Stop</button>
         <button className="text-button" disabled={!submitted.current || busy || !consent || !connected} onClick={() => {
           if (active && 'canContinue' in state && state.canContinue && state.kind !== 'recovery') void controller.current?.continueTask();
           else if (active) void controller.current?.retry();

@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
-import { geminiReply, ProviderError, type GeminiEnv } from './gemini';
+import { geminiReply, geminiTextReply, ProviderError, type GeminiEnv } from './gemini';
+import { MAX_TEXT_BYTES, TextRequestSchema, prepareText, safeTextResult } from '@clickpilot/shared/text-assistant';
 import {
   GuidanceRequestSchema, AssistantResultSchema, MAX_REQUEST_BYTES,
   validateGuidanceResponse, type ErrorCode,
@@ -26,18 +27,19 @@ const MESSAGES: Record<ErrorCode, string> = {
   cancelled: 'The request was cancelled.',
 };
 
-function errorResponse(code: ErrorCode, status: number): Response {
-  return Response.json({ protocolVersion: 3, kind: 'error', error: { code, message: MESSAGES[code] } }, {
+function errorResponse(code: ErrorCode, status: number, protocolVersion = 3): Response {
+  const message = protocolVersion === 1 && code === 'payload_too_large' ? 'The text request exceeds the 16 KiB limit.' : MESSAGES[code];
+  return Response.json({ protocolVersion, kind: 'error', error: { code, message } }, {
     status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' },
   });
 }
 
-async function readJson(request: Request): Promise<{ value: unknown } | { response: Response }> {
-  if (Number(request.headers.get('Content-Length')) > MAX_REQUEST_BYTES) {
-    return { response: errorResponse('payload_too_large', 413) };
+async function readJson(request: Request, limit = MAX_REQUEST_BYTES, version = 3): Promise<{ value: unknown } | { response: Response }> {
+  if (Number(request.headers.get('Content-Length')) > limit) {
+    return { response: errorResponse('payload_too_large', 413, version) };
   }
   const reader = request.body?.getReader();
-  if (!reader) return { response: errorResponse('invalid_json', 400) };
+  if (!reader) return { response: errorResponse('invalid_json', 400, version) };
   const chunks: Uint8Array[] = [];
   let size = 0;
   try {
@@ -45,9 +47,9 @@ async function readJson(request: Request): Promise<{ value: unknown } | { respon
       const chunk = await reader.read();
       if (chunk.done) break;
       size += chunk.value.byteLength;
-      if (size > MAX_REQUEST_BYTES) {
+      if (size > limit) {
         await reader.cancel();
-        return { response: errorResponse('payload_too_large', 413) };
+        return { response: errorResponse('payload_too_large', 413, version) };
       }
       chunks.push(chunk.value);
     }
@@ -56,15 +58,16 @@ async function readJson(request: Request): Promise<{ value: unknown } | { respon
     for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
     return { value: JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)) as unknown };
   } catch {
-    return { response: errorResponse('invalid_json', 400) };
+    return { response: errorResponse('invalid_json', 400, version) };
   } finally { reader.releaseLock(); }
 }
 
 // Tests may inject deterministic replies; the runnable path uses backend-only secrets.
-export function createApp(provider?: (context: ProviderContext, signal: AbortSignal) => Promise<unknown>) {
+export function createApp(provider?: (context: ProviderContext, signal: AbortSignal) => Promise<unknown>,
+  textProvider?: (context: { selectedText: string; question: string }, signal: AbortSignal) => Promise<unknown>) {
   const app = new Hono<{ Bindings: GeminiEnv }>();
   app.use('*', async (c, next) => {
-    if (!['127.0.0.1', 'localhost', '[::1]'].includes(new URL(c.req.url).hostname)) return errorResponse('local_only', 403);
+    if (!['127.0.0.1', 'localhost', '[::1]'].includes(new URL(c.req.url).hostname)) return errorResponse('local_only', 403, c.req.path === '/v1/text/explain' ? 1 : 3);
     c.header('Cache-Control', 'no-store');
     c.header('X-Content-Type-Options', 'nosniff');
     await next();
@@ -115,7 +118,29 @@ export function createApp(provider?: (context: ProviderContext, signal: AbortSig
     return c.json(response);
   });
   app.all('/v1/guidance/next', () => errorResponse('method_not_allowed', 405));
+  app.post('/v1/text/explain', async (c) => {
+    const type = c.req.header('Content-Type')?.split(';')[0]?.trim().toLowerCase();
+    const encoding = c.req.header('Content-Encoding');
+    if (type !== 'application/json' || (encoding && encoding.toLowerCase() !== 'identity')) return errorResponse('unsupported_media_type', 415, 1);
+    const body = await readJson(c.req.raw, MAX_TEXT_BYTES, 1);
+    if ('response' in body) return body.response;
+    const parsed = TextRequestSchema.safeParse(body.value);
+    if (!parsed.success) return errorResponse('invalid_request', 400, 1);
+    const context = prepareText(parsed.data.selectedText, parsed.data.question);
+    if (!context) return errorResponse('unsafe_context', 422, 1);
+    try {
+      const output = await (textProvider ? textProvider(context, c.req.raw.signal) : geminiTextReply(context, c.req.raw.signal, c.env ?? {}));
+      if (c.req.raw.signal.aborted) return errorResponse('cancelled', 499, 1);
+      const result = safeTextResult(output);
+      if (!result) return errorResponse('invalid_provider_response', 502, 1);
+      const { sessionId, requestId, pageKey, selectionId } = parsed.data;
+      return c.json({ protocolVersion: 1, sessionId, requestId, pageKey, selectionId, result });
+    } catch (error) {
+      return error instanceof ProviderError ? errorResponse(error.code, error.status, 1) : errorResponse('provider_error', 502, 1);
+    }
+  });
+  app.all('/v1/text/explain', () => errorResponse('method_not_allowed', 405, 1));
   app.notFound(() => errorResponse('not_found', 404));
-  app.onError(() => errorResponse('internal_error', 500));
+  app.onError((_, c) => errorResponse('internal_error', 500, c.req.path === '/v1/text/explain' ? 1 : 3));
   return app;
 }

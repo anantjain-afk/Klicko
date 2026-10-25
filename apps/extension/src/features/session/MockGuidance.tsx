@@ -1,6 +1,6 @@
 import { useRef, useState, type FormEvent } from 'react';
 import type { GuidanceState } from './session';
-import { useGuidanceSession } from './useGuidanceSession';
+import type { useGuidanceSession } from './useGuidanceSession';
 import type { MockScenario } from './mock';
 
 function statusText(state: GuidanceState): string {
@@ -14,10 +14,10 @@ function statusText(state: GuidanceState): string {
   }
 }
 
-export function MockGuidance() {
+export function MockGuidance({ session }: { session: ReturnType<typeof useGuidanceSession> }) {
   const [question, setQuestion] = useState('');
   const [scenario, setScenario] = useState<MockScenario>('normal');
-  const { state, connected, controller, connection } = useGuidanceSession(false);
+  const { state, connected, controller, connection } = session;
   const previousTask = useRef<{ question: string; scenario: MockScenario } | null>(null);
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -52,7 +52,7 @@ export function MockGuidance() {
       <section className="guidance-progress" aria-label="Guidance progress">
         <p className="guidance-state" role={state.kind === 'error' ? 'alert' : 'status'} aria-live="polite">{statusText(state)}</p>
         <div className="guidance-actions">
-          <button className="text-button" onClick={() => controller.current?.stop()} disabled={!canStop}>Stop</button>
+          <button className="text-button" onClick={() => { session.textController.current?.stop(); controller.current?.stop(); }} disabled={!canStop}>Stop</button>
           <button className="text-button" onClick={retry} disabled={!canRetry || !connected}>Retry</button>
         </div>
       </section>

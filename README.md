@@ -178,3 +178,10 @@ ClickPilot explores a practical intersection of browser extension development, A
 ## License
 
 To be decided before public release.
+
+
+### Contextual text assistant (7A)
+
+Activate ClickPilot on a public webpage with the toolbar and leave the side panel open. Select a short ordinary passage, choose **Ask ClickPilot**, and enter a question. Enable **Allow selected text and questions to be sent to Gemini** in the panel before pressing **Ask**. Selection and drafting stay local. A short explanation appears beside the selection and the detailed answer stays in the panel if scrolling removes the bubble. Cancel/Escape, Stop text assistant, navigation or panel closure cancel pending text work; Resume text assistant enables selection help again. Starting guidance switches away from text assistance.
+
+Use public, non-sensitive text only. Editable fields, forms, sensitive contexts and unsupported frames/shadow/PDF/canvas selections are excluded. Limits: 2,000 passage characters and 240 question characters; privacy filters are heuristic. Only the selected passage and question reach Gemini through the existing local Worker. No screenshots, voice, conversation history or persistent selected text are added. See `docs/local-api.md` for the separate text protocol and `PROGRESS.md` for verification status and Chrome steps.

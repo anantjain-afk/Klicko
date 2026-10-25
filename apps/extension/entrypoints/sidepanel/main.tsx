@@ -5,6 +5,9 @@ import { isInspectionResponse, isOverlayResponse, isPageInvalidation, type PageS
 import { AssistantPanel } from '../../src/features/session/AssistantPanel';
 import { MockGuidance } from '../../src/features/session/MockGuidance';
 import './style.css';
+import { useGuidanceSession } from '../../src/features/session/useGuidanceSession';
+import { isTextEvent } from '../../src/lib/text-assistant';
+import { TextAssistant } from '../../src/features/text-assistant/TextAssistant';
 
 type ViewState =
   | { kind: 'idle' }
@@ -19,7 +22,7 @@ const ERROR_MESSAGES = {
   changed: 'The page changed during inspection. Try again on the current tab.',
 };
 
-function ManualInspection() {
+function ManualInspection({ session }: { session: ReturnType<typeof useGuidanceSession> }) {
   const [view, setView] = useState<ViewState>({ kind: 'idle' });
   const [overlayStatus, setOverlayStatus] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -47,16 +50,20 @@ function ManualInspection() {
   }
 
   useEffect(() => {
-    const connection = browser.runtime.connect({ name: 'clickpilot-panel' });
+    const connection = session.connection.current;
+    if (!connection) return;
     panelConnection.current = connection;
-    connection.onDisconnect.addListener(() => {
+    const onDisconnect = () => {
       if (panelConnection.current !== connection) return;
       panelConnection.current = null;
       clearInspection();
       setView({ kind: 'error', message: 'The page connection closed. Reopen the panel and inspect again.' });
-    });
+    };
+    connection.onDisconnect.addListener(onDisconnect);
     function onInvalidation(message: unknown, sender: { id?: string; tab?: { id?: number } }) {
       const snapshot = currentSnapshot.current;
+      if (isTextEvent(message) && message.type === 'TEXT_OPENED' && sender.id === browser.runtime.id
+        && sender.tab?.id === observedTabId.current && snapshot?.pageKey === message.pageKey) { clearInspection(); return; }
       if (!isPageInvalidation(message) || sender.id !== browser.runtime.id
         || sender.tab?.id !== observedTabId.current || !snapshot
         || message.pageKey !== snapshot.pageKey || message.snapshotId !== snapshot.snapshotId) return;
@@ -83,9 +90,7 @@ function ManualInspection() {
     }
     function onPageHide() {
       clearInspection();
-      const connection = panelConnection.current;
       panelConnection.current = null;
-      connection?.disconnect();
     }
 
     browser.tabs.onActivated.addListener(onTabActivated);
@@ -93,17 +98,18 @@ function ManualInspection() {
     browser.tabs.onUpdated.addListener(onTabUpdated);
     window.addEventListener('pagehide', onPageHide);
     return () => {
-      requestId.current += 1;
+      clearInspection();
+      connection.onDisconnect.removeListener(onDisconnect);
       browser.tabs.onActivated.removeListener(onTabActivated);
       browser.runtime.onMessage.removeListener(onInvalidation);
       browser.tabs.onUpdated.removeListener(onTabUpdated);
       window.removeEventListener('pagehide', onPageHide);
       panelConnection.current = null;
-      connection.disconnect();
     };
-  }, []);
+  }, [session.connectionId]);
 
   async function inspectPage() {
+    session.textController.current?.stop();
     clearInspection();
     const currentRequestId = ++requestId.current;
     setView({ kind: 'loading' });
@@ -183,7 +189,7 @@ function ManualInspection() {
         <section className="results" aria-labelledby="results-title">
           <div className="results-heading">
             <h2 id="results-title">Visible controls ({view.snapshot.elements.length})</h2>
-            <button className="text-button" onClick={clearInspection}>Stop</button>
+            <button className="text-button" onClick={() => { session.textController.current?.stop(); clearInspection(); }}>Stop</button>
           </div>
           <p className="overlay-status" role="status">{overlayStatus || 'Manual debug mode · Choose a control below. Lists expire after one minute.'}</p>
           {view.snapshot.elements.length === 0 ? (
@@ -213,6 +219,12 @@ function ManualInspection() {
 
 function App() {
   const [mode, setMode] = useState<'mock' | 'manual' | 'assistant'>('mock');
+  const session = useGuidanceSession(mode === 'assistant');
+  function changeMode(next: typeof mode) {
+    if (next === mode) return;
+    session.controller.current?.stop();
+    setMode(next);
+  }
   return (
     <main className="panel">
       <header className="panel-header">
@@ -220,15 +232,16 @@ function App() {
           <span className="brand-mark" aria-hidden="true"><span /></span>
           <span>ClickPilot</span>
         </div>
-        <span className="status">{mode === 'mock' ? 'Mock mode · Local only' : mode === 'assistant' ? 'Gemini · Guided task' : 'Manual highlights'}</span>
+        <span className="status">{mode === 'mock' ? 'Mock guidance · Local' : mode === 'assistant' ? 'Gemini · Guided task' : 'Manual highlights'}</span>
       </header>
       <nav className="mode-switch" aria-label="Guidance mode">
-        <button type="button" aria-pressed={mode === 'assistant'} onClick={() => setMode('assistant')}>AI assistant</button>
-        <button type="button" aria-pressed={mode === 'mock'} onClick={() => setMode('mock')}>Mock guidance</button>
-        <button type="button" aria-pressed={mode === 'manual'} onClick={() => setMode('manual')}>Manual highlights</button>
+        <button type="button" aria-pressed={mode === 'assistant'} onClick={() => changeMode('assistant')}>AI assistant</button>
+        <button type="button" aria-pressed={mode === 'mock'} onClick={() => changeMode('mock')}>Mock guidance</button>
+        <button type="button" aria-pressed={mode === 'manual'} onClick={() => changeMode('manual')}>Manual highlights</button>
       </nav>
-      {mode === 'assistant' ? <AssistantPanel /> : mode === 'mock' ? <MockGuidance /> : <ManualInspection />}
-      <footer>ClickPilot waits for you. {mode === 'assistant' ? 'Gemini replies can be mistaken.' : 'Page details stay in this extension.'}</footer>
+      {mode === 'assistant' ? <AssistantPanel session={session} /> : mode === 'mock' ? <MockGuidance session={session} /> : <ManualInspection session={session} />}
+      <TextAssistant state={session.textState} controller={session.textController.current} consent={session.textConsent} onConsent={session.setTextConsent} />
+      <footer>ClickPilot waits for you. {mode === 'assistant' ? 'Gemini replies can be mistaken.' : 'Manual and mock inspection stay local.'}</footer>
     </main>
   );
 }

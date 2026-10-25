@@ -28,13 +28,19 @@ export function eligibleElements(elements: { id: string; role: string; name: str
   });
 }
 
+export function isSensitivePage(value: string): boolean {
+  let url: URL;
+  try { url = new URL(value); } catch { return true; }
+  let path: string;
+  try { path = decodeURIComponent(url.pathname); } catch { return true; }
+  return !['http:', 'https:'].includes(url.protocol) || !!url.username || !!url.password
+    || /(?:^|\/)(?:login|signin|sign-in|auth|oauth|password|reset-password|billing|payments?|checkout|bank|medical|health)(?:\/|$)/i.test(path)
+    || containsSensitiveText(path);
+}
+
 export function prepareProviderContext(request: GuidanceRequest): ProviderContext | null {
   const url = new URL(request.page.url);
-  let path: string;
-  try { path = decodeURIComponent(url.pathname); } catch { return null; }
-  if (url.username || url.password
-    || /(?:^|\/)(?:login|signin|sign-in|auth|oauth|password|reset-password|billing|payments?|checkout|bank|medical|health)(?:\/|$)/i.test(path)
-    || containsSensitiveText(request.userGoal)) return null;
+  if (isSensitivePage(request.page.url) || containsSensitiveText(request.userGoal)) return null;
 
   const previous = request.taskContext.previousStep;
   if (previous && containsSensitiveText(previous.action)) return null;

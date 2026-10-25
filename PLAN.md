@@ -1,6 +1,8 @@
 # ClickPilot implementation plan
 
-Status: Milestone 1 verified; milestone 2's separate privacy verification remains unconfirmed. Milestone 3 is verified in Chrome. Milestone 4 is implemented with manual verification pending. The user explicitly approved milestone 5A on 21 October 2026; the local contract is implemented and was verified by the user on 22 October 2026. Milestone 5B's revised plan was explicitly approved on 22 October 2026; implementation, automated checks and user manual verification are complete. Milestone 5B is VERIFIED; the user authorized its commit/push to milestone-5B. Milestone 6A, including the continuation clarification below, was approved for implementation on 22 October 2026 and VERIFIED by the user on 23 October 2026 after the shared highlighting correction. The user authorized committing and pushing that correction to milestone-6A. Milestone 6B was explicitly approved on 23 October 2026 by “ok , continue with 6B”; later milestones remain unapproved.
+Status update — 25 October 2026: the user confirmed milestone 6B is complete and approved scoped 7A implementation with the strict result union and retained side-panel explanation. The 7A branch was based on 6A; it has been fast-forwarded to existing 6B commit `109e04f` without creating a commit. Historical milestone records below are retained.
+
+Earlier status: Milestone 1 verified; milestone 2's separate privacy verification remains unconfirmed. Milestone 3 is verified in Chrome. Milestone 4 is implemented with manual verification pending. The user explicitly approved milestone 5A on 21 October 2026; the local contract is implemented and was verified by the user on 22 October 2026. Milestone 5B's revised plan was explicitly approved on 22 October 2026; implementation, automated checks and user manual verification are complete. Milestone 5B is VERIFIED; the user authorized its commit/push to milestone-5B. Milestone 6A, including the continuation clarification below, was approved for implementation on 22 October 2026 and VERIFIED by the user on 23 October 2026 after the shared highlighting correction. The user authorized committing and pushing that correction to milestone-6A. Milestone 6B was explicitly approved on 23 October 2026 by “ok , continue with 6B”; later milestones remain unapproved.
 Prepared: 21 October 2026.
 
 ## Sources and architecture review
@@ -373,6 +375,30 @@ Use one bounded, strictly validated record for the owned task/restart notice, co
 
 **Gate:** User approves verified release preparation. Commit, push, deployment, store submission, publication, and production changes still require explicit permission.
 
-## Current approval gate
+## Historical approval gate from the 6A checkout
 
 Milestone 6A, including the shared highlighting correction, was verified by the user on 23 October 2026. The dynamic popup correction remains separately awaiting user verification. The user approved the revised 6B implementation with “ok , continue with 6B” on 23 October 2026. Work is limited to 6B; automated evidence and manual verification status are recorded in `PROGRESS.md`. Stop after supplying verification instructions. No commit, push, deployment, publication or milestone 7 is authorized.
+
+
+## Milestone 7A — Contextual text assistant
+
+**Status:** IMPLEMENTED — AWAITING USER VERIFICATION, 25 October 2026. Final automated evidence and numbered Chrome steps are recorded in PROGRESS.md. No Git commit/push, deployment, publication or next milestone is authorized.
+
+The user clarified that 6B is complete. Before coding, inspection found one clean worktree on `milestone-7A` at `79aaf6c`, while local and origin `milestone-6B` both pointed to direct descendant `109e04f`. Fast-forwarding to that existing commit resolved the discrepancy; no new commit or remote operation was performed. Keep its navigation, retained volatile goal, checkpoint owner/revision guards, storage boundary, worker reconnection and all regression tests.
+
+Scope: ordinary top-level native Selection/Range text only, one meaningful completed selection, one compact accessible Ask ClickPilot composer and one transient response. Freeze bounded text/range before input focus. No provider request until an explicit Ask with selected-text-specific consent. Reject editable/form/hidden/inert/sensitive/unsupported selections, unknown result fields, stale identity and over-limit content. Selection and question bounds are 2,000 and 240 UTF-16 code units; text HTTP requests/responses are capped at 16 KiB actual UTF-8 bytes.
+
+Use a good default Range rectangle, measured bubble size, viewport clamping, above/below placement and scroll/resize updates. Remove floating UI if no safe space exists. Keep a pending or completed detailed panel reply when only geometry is lost; clear it on actual invalidation, a new selection, Stop or session termination. Reuse Shadow DOM surface isolation with interactive pointer events limited to the bubble; retain guidance decorations' pointer transparency.
+
+Add strict independently versioned text protocol 1 at POST /v1/text/explain; retain guidance protocol 3. Request carries operation explain_text, opaque session/request/page/selection identities, selectedText and question. Only selectedText and question reach Gemini. No URL, origin, title, surrounding prose, control inventory, geometry, history or screenshots. Results are a strict discriminated union: explanation requires quickExplanation (1–280) and detailedExplanation (1–2,000); clarification/unsupported require only message (1–600). Server constructs the envelope. Render as text only and validate/filter at both boundaries.
+
+Use the existing panel port, abort/stale-result approach and backend Gemini transport/security controls. Content owns range/geometry/UI, the panel owns text requests/results, and background checks activation/tab/document/current selection and routes transport. Text assistance does not create checkpoints or guidance steps. Opening the composer ends current guidance; starting inspection/guidance ends text assistance. A plain question/result boundary can support future voice without implementing speech APIs.
+
+Likely files: new shared text contract and extension text selection/bubble/session/view/client modules; existing content/background/panel/session wiring and overlay surface helper; API route and Gemini prompt using existing transport; deterministic API/unit/browser tests and synthetic text fixture; README/local API/plan/progress documentation. No dependencies or permissions added.
+
+Run corepack pnpm typecheck, corepack pnpm lint, corepack pnpm test, corepack pnpm test:e2e and corepack pnpm build (Worker dry-run only), plus git diff --check. Preserve the full 6A/6B/popup/overlay suite. Tests use synthetic data and mocked providers. Verify the actual Chrome side panel manually using the numbered steps in PROGRESS.md; no passing automation is presented as real-model or actual-side-panel verification.
+
+
+## Current approval gate — 7A
+
+Milestone 7A is implemented and AWAITING USER VERIFICATION. Final typecheck, lint, unit tests (92 API + 113 extension), build and full browser suite (128/128, including 6A/6B) passed. The user must perform the numbered Chrome checks in PROGRESS.md. On 25 October 2026 the user explicitly authorized committing the scoped 7A changes and pushing milestone-7A to the configured origin. Manual verification remains pending; no deployment, publication, merge or next milestone is authorized.

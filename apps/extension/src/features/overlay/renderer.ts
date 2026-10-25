@@ -1,6 +1,7 @@
 import { visibleRect } from '../observer/collect-elements';
 import { reportHighlightFailure } from './diagnostics';
 import { targetHitPoints } from './hit-test-points';
+import { createOverlaySurface } from './surface';
 
 // All positions are current viewport CSS pixels; no snapshot coordinates are reused.
 function targetRect(target: Element): DOMRect | null {
@@ -35,12 +36,7 @@ export function showOverlay(
   if (!isCurrent()) return reportHighlightFailure('identity_mismatch');
   if (!targetRect(target)) return null;
 
-  const host = document.createElement('div');
-  host.id = 'clickpilot-overlay';
-  host.setAttribute('aria-hidden', 'true');
-  // Inline !important isolates the host from ordinary page CSS, including resets.
-  host.style.cssText = 'all: initial !important; position: fixed !important; inset: 0 !important; width: auto !important; height: auto !important; pointer-events: none !important; z-index: 2147483647 !important;';
-  const shadow = host.attachShadow({ mode: 'open' });
+  const { host, shadow } = createOverlaySurface('clickpilot-overlay');
   const style = document.createElement('style');
   style.textContent = `
     :host { pointer-events: none !important; }

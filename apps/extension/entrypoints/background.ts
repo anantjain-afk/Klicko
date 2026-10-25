@@ -1,5 +1,8 @@
 import { CHECKPOINT_KEY, createCheckpointStore, isCheckpointCommand } from '../src/features/session/checkpoint';
 import { isAssistantRequest, requestAssistant, type AssistantRequest } from '../src/lib/assistant';
+import { isTextCommand, requestText, type TextCommand } from '../src/lib/text-assistant';
+import { TextIdentitySchema } from '@clickpilot/shared/text-assistant';
+import { isSensitivePage } from '@clickpilot/shared/privacy';
 import { defineBackground } from 'wxt/utils/define-background';
 import { browser, type Browser } from 'wxt/browser';
 import {
@@ -120,7 +123,98 @@ export default defineBackground(() => {
     }).catch(() => { if (!closed) panel.postMessage({ type: 'CHECKPOINT_UNAVAILABLE' }); });
     let page: Browser.runtime.Port | undefined;
     let connectedTabId: number | undefined;
-    let pending: { command: AssistantRequest; abort: AbortController } | undefined;
+    let pending: { command: AssistantRequest | TextCommand; abort: AbortController } | undefined;
+    let armed: { sessionId: string; tabId: number; pageKey: string; consent: boolean } | undefined;
+    let arming: { sessionId: string; tabId: number } | undefined;
+    let armNumber = 0;
+    function track(tabId: number) {
+      if (page && connectedTabId === tabId) return;
+      page?.disconnect();
+      connectedTabId = tabId;
+      page = browser.tabs.connect(tabId, { name: 'clickpilot-page', frameId: 0 });
+      const connection = page;
+      connection.onDisconnect.addListener(() => {
+        void browser.runtime.lastError;
+        if (page === connection) page = undefined;
+      });
+    }
+    function stopText() {
+      ++armNumber;
+      const previous = armed ?? arming; armed = undefined; arming = undefined;
+      if (pending?.command.type === 'ASK_TEXT') { pending.abort.abort(); pending = undefined; }
+      if (previous) void browser.tabs.sendMessage(previous.tabId, { type: 'DISABLE_TEXT', sessionId: previous.sessionId }, { frameId: 0 }).catch(() => undefined);
+    }
+    async function armText(sessionId: string, consent: boolean) {
+      const attempt = ++armNumber;
+      try {
+        if (!checkpoints.isOwner(ownerId)) return;
+        const [tab] = await browser.tabs.query({ active: true, lastFocusedWindow: true });
+        if (closed || attempt !== armNumber) return;
+        if (tab?.id === undefined || !tab.url || isSensitivePage(tab.url)
+          || activatedOrigins.get(tab.id) !== new URL(tab.url).origin) throw new Error('Click the ClickPilot toolbar icon on a public page to enable text help.');
+        if (armed && armed.tabId !== tab.id) {
+          void browser.tabs.sendMessage(armed.tabId, { type: 'DISABLE_TEXT', sessionId: armed.sessionId }, { frameId: 0 }).catch(() => undefined);
+          armed = undefined;
+        }
+        const command = { type: 'ENABLE_TEXT', sessionId, consent };
+        arming = { sessionId, tabId: tab.id };
+        let result: unknown;
+        try { result = await browser.tabs.sendMessage(tab.id, command, { frameId: 0 }); }
+        catch {
+          if (closed || attempt !== armNumber) return;
+          await browser.scripting.executeScript({ target: { tabId: tab.id }, files: ['/content-scripts/content.js'] });
+          if (closed || attempt !== armNumber) return;
+          result = await browser.tabs.sendMessage(tab.id, command, { frameId: 0 });
+        }
+        const [latest] = await browser.tabs.query({ active: true, lastFocusedWindow: true });
+        if (closed || attempt !== armNumber || !checkpoints.isOwner(ownerId)) return;
+        if (latest?.id !== tab.id || latest.url !== tab.url) {
+          await browser.tabs.sendMessage(tab.id, { type: 'DISABLE_TEXT', sessionId }, { frameId: 0 }).catch(() => undefined); return;
+        }
+        if (!result || typeof result !== 'object' || !('pageKey' in result) || typeof result.pageKey !== 'string') throw new Error('Could not enable text help. Activate the toolbar and try again.');
+        track(tab.id);
+        armed = { sessionId, tabId: tab.id, pageKey: result.pageKey, consent };
+        arming = undefined;
+        panel.postMessage({ type: 'TEXT_ARMED', ...armed });
+      } catch (error) {
+        if (!closed && attempt === armNumber) panel.postMessage({ type: 'TEXT_ARM_ERROR', message: error instanceof Error ? error.message : 'Text help could not connect.' });
+      }
+    }
+    async function askText(command: TextCommand) {
+      pending?.abort.abort();
+      const run = { command, abort: new AbortController() }; pending = run;
+      const timer = setTimeout(() => run.abort.abort(), 25_000);
+      try {
+        if (!checkpoints.isOwner(ownerId) || !armed?.consent || armed.tabId !== command.tabId
+          || armed.sessionId !== command.sessionId || armed.pageKey !== command.pageKey) throw new Error('Selected-text sharing is not enabled for this page.');
+        const [tab] = await browser.tabs.query({ active: true, lastFocusedWindow: true });
+        if (tab?.id !== command.tabId || !tab.url || isSensitivePage(tab.url)
+          || activatedOrigins.get(tab.id) !== new URL(tab.url).origin) throw new Error('The active page changed. Select text again.');
+        const check = () => browser.tabs.sendMessage(command.tabId, {
+          type: 'CHECK_TEXT', sessionId: command.sessionId, pageKey: command.pageKey, selectionId: command.selectionId,
+        }, { frameId: 0 });
+        const before: unknown = await check();
+        if (!before || typeof before !== 'object' || !('selectedText' in before) || before.selectedText !== command.selectedText
+          || run.abort.signal.aborted) throw new Error('The selection changed. Select the passage again.');
+        const result = await requestText(command, run.abort.signal);
+        const [latest] = await browser.tabs.query({ active: true, lastFocusedWindow: true });
+        const after: unknown = await check();
+        if (pending !== run || run.abort.signal.aborted) return;
+        if (latest?.id !== command.tabId || latest.url !== tab.url || !after || typeof after !== 'object'
+          || !('selectedText' in after) || after.selectedText !== command.selectedText) throw new Error('The selection changed while replying. Select text again.');
+        await browser.tabs.sendMessage(command.tabId, { type: 'SHOW_TEXT', sessionId: command.sessionId,
+          pageKey: command.pageKey, selectionId: command.selectionId, result: result.result }, { frameId: 0 });
+        if (pending === run && !run.abort.signal.aborted) panel.postMessage({ type: 'TEXT_RESULT', sessionId: command.sessionId, requestId: command.requestId, value: result });
+      } catch (error) {
+        if (pending === run) {
+          const message = run.abort.signal.aborted ? 'The text request timed out. Retry if needed.'
+            : error instanceof Error && error.message.length <= 240 ? error.message : 'Could not reach the text service. Retry from the side panel.';
+          panel.postMessage({ type: 'TEXT_RESULT', sessionId: command.sessionId, requestId: command.requestId, error: message });
+          void browser.tabs.sendMessage(command.tabId, { type: 'SHOW_TEXT', sessionId: command.sessionId,
+            pageKey: command.pageKey, selectionId: command.selectionId, error: message }, { frameId: 0 }).catch(() => undefined);
+        }
+      } finally { clearTimeout(timer); if (pending === run) pending = undefined; }
+    }
     async function ask(command: AssistantRequest) {
       pending?.abort.abort();
       const run = { command, abort: new AbortController() };
@@ -152,13 +246,21 @@ export default defineBackground(() => {
       }
     }
     panel.onMessage.addListener((message: unknown) => {
+      if (isTextCommand(message)) { void askText(message); return; }
+      if (message && typeof message === 'object' && 'type' in message) {
+        if (message.type === 'STOP_TEXT') { stopText(); return; }
+        if (message.type === 'ARM_TEXT' && 'sessionId' in message && 'consent' in message && typeof message.consent === 'boolean'
+          && TextIdentitySchema.pick({ sessionId: true }).safeParse({ sessionId: message.sessionId }).success) {
+          void armText(String(message.sessionId), message.consent); return;
+        }
+      }
       if (isCheckpointCommand(message)) {
         void checkpoints.apply(ownerId, message).then((ok) => {
           if (!closed) panel.postMessage({ type: 'CHECKPOINT_RESULT', revision: message.revision, ok });
         }).catch(() => { if (!closed) panel.postMessage({ type: 'CHECKPOINT_RESULT', revision: message.revision, ok: false }); });
         return;
       }
-      if (isAssistantRequest(message)) { void ask(message); return; }
+      if (isAssistantRequest(message)) { stopText(); void ask(message); return; }
       if (message && typeof message === 'object' && 'type' in message && message.type === 'CANCEL_ASSISTANT') {
         if (pending && 'sessionId' in message && 'requestId' in message && pending.command.sessionId === message.sessionId
           && pending.command.requestId === message.requestId) {
@@ -169,18 +271,11 @@ export default defineBackground(() => {
         return;
       }
       if (!isTrackPageRequest(message)) return;
-      if (page && connectedTabId === message.tabId) return;
-      page?.disconnect();
-      connectedTabId = message.tabId;
-      page = browser.tabs.connect(message.tabId, { name: 'clickpilot-page', frameId: 0 });
-      const connection = page;
-      connection.onDisconnect.addListener(() => {
-        void browser.runtime.lastError;
-        if (page === connection) page = undefined;
-      });
+      track(message.tabId);
     });
     panel.onDisconnect.addListener(() => {
       closed = true;
+      stopText();
       void checkpoints.disconnect(ownerId).catch(() => undefined);
       pending?.abort.abort();
       pending = undefined;
@@ -204,6 +299,7 @@ export default defineBackground(() => {
     void browser.sidePanel.open({ windowId: tab.windowId }).catch((error: unknown) => {
       console.error('Could not open the ClickPilot side panel:', error);
     });
+    void browser.runtime.sendMessage({ type: 'TEXT_ACTIVATED', tabId: tab.id }).catch(() => undefined);
   });
   browser.tabs.onRemoved.addListener((tabId) => {
     activatedOrigins.delete(tabId);

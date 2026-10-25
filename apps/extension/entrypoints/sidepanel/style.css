@@ -310,4 +310,8 @@ summary { color: #315c43; font-weight: 650; cursor: pointer; }
 .assistant-consent input { flex: 0 0 auto; margin-top: 3px; accent-color: #315c43; }
 .assistant-consent input:focus-visible { outline: 3px solid #8dad98; outline-offset: 3px; }
 .assistant-question { margin-bottom: 12px; font-size: 12px; line-height: 1.5; color: #526056; overflow-wrap: anywhere; }
+.text-assistant { margin-top: 28px; padding-block: 20px; border-top: 1px solid #d9ded6; }
+.text-assistant h2 { font-size: 15px; line-height: 1.4; }
+.text-disclosure { margin-block: 10px 14px; color: #526056; font-size: 12px; line-height: 1.6; }
+.text-reply { margin-top: 16px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
 .mode-switch { flex-wrap: wrap; column-gap: 16px; row-gap: 0; }

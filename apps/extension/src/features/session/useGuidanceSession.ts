@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { browser, type Browser } from 'wxt/browser';
 import { createAssistantSession, createMockSession, type GuidanceState, NAVIGATION_SETTLE_MS } from './session';
 import type { AssistantRequest } from '../../lib/assistant';
+import type { TextCommand } from '../../lib/text-assistant';
+import { createTextSession, type TextState } from '../text-assistant/session';
 
-function askThroughPanel(port: Browser.runtime.Port, request: AssistantRequest, signal: AbortSignal): Promise<unknown> {
+function askThroughPanel(port: Browser.runtime.Port, request: AssistantRequest | TextCommand, signal: AbortSignal): Promise<unknown> {
   return new Promise((resolve, reject) => {
     function cleanup() { port.onMessage.removeListener(receive); signal.removeEventListener('abort', cancel); }
     function cancel() {
@@ -12,7 +14,7 @@ function askThroughPanel(port: Browser.runtime.Port, request: AssistantRequest, 
       reject(new Error('The request was cancelled.'));
     }
     function receive(value: unknown) {
-      if (!value || typeof value !== 'object' || !('type' in value) || value.type !== 'ASSISTANT_RESULT'
+      if (!value || typeof value !== 'object' || !('type' in value) || value.type !== (request.type === 'ASK_TEXT' ? 'TEXT_RESULT' : 'ASSISTANT_RESULT')
         || !('sessionId' in value) || value.sessionId !== request.sessionId || !('requestId' in value) || value.requestId !== request.requestId) return;
       cleanup();
       if ('error' in value && typeof value.error === 'string' && value.error.length <= 240) reject(new Error(value.error));
@@ -28,6 +30,10 @@ function askThroughPanel(port: Browser.runtime.Port, request: AssistantRequest, 
 export function useGuidanceSession(live: boolean) {
   const [state, setState] = useState<GuidanceState>({ kind: 'idle' });
   const [connected, setConnected] = useState(true);
+  const [connectionId, setConnectionId] = useState(0);
+  const [textState, setTextState] = useState<TextState>({ kind: 'idle', message: 'Select public text to ask about it.' });
+  const [textConsent, setTextConsent] = useState(false);
+  const textController = useRef<ReturnType<typeof createTextSession> | null>(null);
   const controller = useRef<ReturnType<typeof createMockSession> | null>(null);
   const connection = useRef<Browser.runtime.Port | null>(null);
 
@@ -68,6 +74,7 @@ export function useGuidanceSession(live: boolean) {
         return askThroughPanel(port, { type: 'ASK_ASSISTANT', tabId, pageKey: snapshot.pageKey, snapshotId: snapshot.snapshotId, userGoal: task, taskContext, ...identity }, signal);
       },
       inspect: async (requestId, tabId, settle, signal) => {
+        textController.current?.stop();
         const inspectionToken = crypto.randomUUID();
         const cancel = () => { void browser.runtime.sendMessage({ type: 'CANCEL_INSPECTION', inspectionToken }).catch(() => undefined); };
         signal?.addEventListener('abort', cancel, { once: true });
@@ -95,6 +102,13 @@ export function useGuidanceSession(live: boolean) {
       clear: (tabId, snapshotId) => browser.runtime.sendMessage({ type: 'STOP_INSPECTION', tabId, snapshotId }),
     }, setState);
     controller.current = session;
+    setTextConsent(false);
+    const textSession = createTextSession({
+      post: (message) => { if (port) port.postMessage(message); },
+      ask: (command, signal) => port ? askThroughPanel(port, command, signal) : Promise.reject(new Error('The connection closed.')),
+      interruptGuidance: () => session.stop(),
+    }, setTextState);
+    textController.current = textSession;
 
     function scheduleRecovery() {
       clearTimeout(recoveryTimer);
@@ -103,8 +117,9 @@ export function useGuidanceSession(live: boolean) {
     function connect() {
       if (disposed) return;
       const next = browser.runtime.connect({ name: 'clickpilot-panel' });
-      port = next; connection.current = next;
+      port = next; connection.current = next; setConnectionId((value) => value + 1);
       const receive = (value: unknown) => {
+        textSession.onPortMessage(value);
         if (!value || typeof value !== 'object' || !('type' in value)) return;
         if (value.type === 'CHECKPOINT_RESULT' && 'revision' in value && typeof value.revision === 'number') {
           const ok = 'ok' in value && value.ok === true;
@@ -120,11 +135,13 @@ export function useGuidanceSession(live: boolean) {
       };
       next.onMessage.addListener(receive);
       if (pendingClear) next.postMessage(pendingClear);
+      textSession.onConnected();
       next.onDisconnect.addListener(() => {
         void browser.runtime.lastError;
         next.onMessage.removeListener(receive);
         if (disposed || port !== next) return;
         port = null; connection.current = null; setConnected(false);
+        textSession.connectionLost();
         clearTimeout(recoveryTimer);
         session.suspend('The worker connection closed. Reconnecting; your goal remains in this panel. Continue after reconnection and toolbar activation if required.', true);
         for (const finish of checkpointWaiters.values()) finish(false);
@@ -133,17 +150,24 @@ export function useGuidanceSession(live: boolean) {
     }
     connect();
     const onMessage = (message: unknown, sender: Browser.runtime.MessageSender) => {
-      if (sender.id !== browser.runtime.id || sender.tab?.id === undefined || sender.frameId !== 0) return;
+      if (sender.id !== browser.runtime.id) return;
+      if (message && typeof message === 'object' && 'type' in message && message.type === 'TEXT_ACTIVATED' && !sender.tab) {
+        textSession.enable(); return;
+      }
+      if (sender.tab?.id === undefined || sender.frameId !== 0) return;
+      textSession.onPageEvent(message, sender.tab.id);
       session.onPageEvent(message, sender.tab.id);
       if (message && typeof message === 'object' && 'type' in message && message.type === 'PAGE_NAVIGATED') scheduleRecovery();
     };
     const onTabActivated = () => {
+      textSession.invalidate();
       if (session.isActive()) {
         clearTimeout(recoveryTimer);
         session.suspend('Tab changed. Return to the task tab, activate the ClickPilot toolbar if required, then Continue task on this page.');
       }
     };
     const onTabUpdated = (tabId: number, change: { url?: string; status?: string }) => {
+      if (tabId === textSession.ownedTab() && (change.url || change.status === 'loading')) textSession.invalidate();
       if (tabId !== session.ownedTab()) return;
       if (change.url && change.url !== lastUrl) {
         lastUrl = change.url;
@@ -156,9 +180,10 @@ export function useGuidanceSession(live: boolean) {
       } else if (change.status === 'complete') scheduleRecovery();
     };
     const onTabRemoved = (tabId: number) => {
+      if (tabId === textSession.ownedTab()) textSession.invalidate('The selected-text tab closed. Activate another page to start again.');
       if (tabId === session.ownedTab()) { clearTimeout(recoveryTimer); session.pause('The task tab closed. Enter a new goal on another tab.'); }
     };
-    const onPageHide = () => { session.destroy(); port?.disconnect(); };
+    const onPageHide = () => { textSession.dispose(); session.destroy(); port?.disconnect(); };
     browser.runtime.onMessage.addListener(onMessage);
     browser.tabs.onActivated.addListener(onTabActivated);
     browser.tabs.onUpdated.addListener(onTabUpdated);
@@ -167,6 +192,7 @@ export function useGuidanceSession(live: boolean) {
     return () => {
       disposed = true;
       clearTimeout(recoveryTimer); clearTimeout(reconnectTimer);
+      textSession.dispose(); textController.current = null;
       session.dispose(); controller.current = null; connection.current = null;
       port?.disconnect(); port = null;
       for (const finish of checkpointWaiters.values()) finish(false);
@@ -178,5 +204,6 @@ export function useGuidanceSession(live: boolean) {
     };
   }, [live]);
 
-  return { state, connected, controller, connection, restartNotice, storageAvailable };
+  return { state, connected, controller, connection, connectionId, restartNotice, storageAvailable, textState, textController, textConsent,
+    setTextConsent: (value: boolean) => { setTextConsent(value); textController.current?.setConsent(value); } };
 }

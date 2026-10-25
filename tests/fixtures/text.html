@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>ClickPilot text fixture</title>
+<style>body{margin:40px;font:18px/1.7 system-ui;color:#202721}p{max-width:650px}button,input{font:inherit}#scrollbox{height:120px;overflow:auto;border:1px solid #aaa;padding:12px}.spacer{height:1100px}.bottom{margin-top:500px}</style>
+<h1>Ordinary webpage text</h1>
+<p id="passage">Photosynthesis allows green plants to convert sunlight into stored chemical energy.</p>
+<p id="second">Evaporation changes liquid water into water vapor as molecules gain energy.</p>
+<p id="hostile">A quoted example: &lt;img src=x onerror="window.bad=true"&gt; **literal text**.</p>
+<p id="secret">Contact synthetic.person@example.com for this private example.</p>
+<p id="mixed">Public start <span contenteditable="true">PRIVATE EDITABLE MARKER</span> public end.</p>
+<div contenteditable="true" id="editor">Editable content must not be observed.</div>
+<input aria-label="Ordinary input" value="FAKE INPUT VALUE"><input type="password" aria-label="Secret input" value="FAKE PASSWORD VALUE">
+<form><p id="form-text">A passage inside a sensitive form.</p></form>
+<p hidden id="hidden">Hidden prose must not be collected.</p>
+<div id="scrollbox"><p id="nested">A nested scrolling passage stays attached to its selected text.</p><div class="spacer"></div></div>
+<button id="normal" onclick="this.textContent='Clicked normally'">Normal website action</button>
+<a href="second.html">Navigate away</a>
+<div class="spacer"></div><p id="bottom" class="bottom">This bottom passage provides another placement test.</p>
+<script>const shadow=document.createElement('div');shadow.id='shadow';shadow.attachShadow({mode:'open'}).innerHTML='<p>Unsupported shadow prose.</p>';document.body.append(shadow);</script>
+</html>
