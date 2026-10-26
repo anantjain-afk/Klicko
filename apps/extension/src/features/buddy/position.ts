@@ -1,12 +1,12 @@
 export interface Viewport { left: number; top: number; width: number; height: number }
 export interface Position { x: number; y: number }
-export const BUDDY_SIZE = 44;
+export const BUDDY_SIZE = 56;
 export function clampBuddy(position: Position, viewport: Viewport): Position {
   return { x: Math.max(viewport.left + 12, Math.min(position.x, viewport.left + viewport.width - BUDDY_SIZE - 12)),
     y: Math.max(viewport.top + 12, Math.min(position.y, viewport.top + viewport.height - BUDDY_SIZE - 12)) };
 }
 export function defaultBuddyPosition(viewport: Viewport): Position {
-  return clampBuddy({ x: viewport.left + viewport.width - 64, y: viewport.top + viewport.height - 64 }, viewport);
+  return clampBuddy({ x: viewport.left + viewport.width - BUDDY_SIZE - 20, y: viewport.top + viewport.height - BUDDY_SIZE - 20 }, viewport);
 }
 export function popupPosition(position: Position, size: { width: number; height: number }, viewport: Viewport): Position {
   const x = Math.max(viewport.left + 12, Math.min(position.x + BUDDY_SIZE - size.width, viewport.left + viewport.width - size.width - 12));

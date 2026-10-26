@@ -3,6 +3,7 @@ import { isSensitivePage } from '@clickpilot/shared/privacy';
 import { createOverlaySurface } from '../overlay/surface';
 import { bubblePosition, captureSelection, sameSelectedText, selectionAnchor } from './selection';
 import type { TextEvent, TextPageCommand } from '../../lib/text-assistant';
+import { uiTheme, uiDarkTheme, uiTokens } from '../../lib/ui-tokens';
 
 export function createTextBubble(pageKey: () => string, valid: () => boolean, send: (event: TextEvent) => void) {
   let enabled: { sessionId: string; consent: boolean } | null = null;
@@ -69,18 +70,19 @@ export function createTextBubble(pageKey: () => string, valid: () => boolean, se
     surface = createOverlaySurface('clickpilot-text', true);
     const style = document.createElement('style');
     style.textContent = `
-      :host { pointer-events:none !important; } * { box-sizing:border-box; }
+      :host { ${uiTheme} pointer-events:none !important; } * { box-sizing:border-box; }
+      @media (prefers-color-scheme:dark) { :host { ${uiDarkTheme} } }
       .bubble { position:absolute; pointer-events:auto; max-width:min(300px, calc(100vw - 24px));
-        width:max-content; padding:10px; border-radius:10px; background:#fffefa; color:#202721;
-        box-shadow:0 4px 18px rgb(0 0 0 / 20%); font:400 14px/1.5 system-ui,sans-serif; overflow-wrap:anywhere; }
-      button,input { font:inherit; } button { cursor:pointer; border:0; border-radius:6px; padding:7px 10px; background:#315c43; color:#fff; }
-      button:hover:not(:disabled) { background:#244934; } button:disabled { opacity:.6; cursor:default; }
-      button:focus-visible,input:focus-visible { outline:3px solid #315c43; outline-offset:2px; }
-      label { display:block; font-weight:600; margin-bottom:7px; } input { width:100%; min-width:0; color:#202721; background:#fff;
-        border:1px solid #9aafa0; border-radius:5px; padding:8px; caret-color:#315c43; }
+        width:max-content; padding:14px; border-radius:12px; background:var(--raised); color:var(--ink);
+        box-shadow:var(--shadow); font:400 14px/1.5 ${uiTokens.font}; overflow-wrap:anywhere; }
+      button,input { font:inherit; } button { cursor:pointer; border:0; border-radius:8px; padding:7px 10px; background:var(--green); color:var(--button-ink); }
+      button:hover:not(:disabled) { background:var(--green-hover); } button:disabled { opacity:.6; cursor:default; }
+      button:focus-visible,input:focus-visible { outline:2px solid var(--green); outline-offset:2px; }
+      label { display:block; font-weight:600; margin-bottom:7px; } input { width:100%; min-width:0; color:var(--ink); background:var(--surface);
+        border:1px solid var(--line); border-radius:8px; padding:8px; caret-color:var(--green); }
       p { margin:0 0 8px; white-space:pre-wrap; } .actions { display:flex; gap:8px; margin-top:9px; }
-      .cancel { color:#315c43; background:#e7ece5; } .note { font-size:12px; color:#526056; margin-top:8px; }
-      ::selection { background:#cde1d2; color:#202721; }
+      .cancel { color:var(--green); background:var(--soft); } .note { font-size:12px; color:var(--muted); margin-top:8px; }
+      ::selection { background:var(--green); color:var(--button-ink); }
     `;
     box = document.createElement('div'); box.className = 'bubble';
     box.setAttribute('role', 'region'); box.setAttribute('aria-label', 'Ask ClickPilot about selected text');

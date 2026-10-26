@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { useGuidanceSession } from './useGuidanceSession';
 import { useConversation } from './useConversation';
+import { Companion } from '../buddy/CompanionAvatar';
+import { companionMood } from '../buddy/companion';
 
 type Session = ReturnType<typeof useGuidanceSession>;
 
@@ -39,6 +41,8 @@ export function AssistantPanel({ session, live, visible, onSettings }: {
   const status = isText ? (textState.kind === 'answered' ? '' : textState.message) : guidanceStatus(session);
   const isError = isText ? textState.kind === 'error' : state.kind === 'error';
   const showStatus = !!status && (messages.length > 0 || textActive || isError || state.kind === 'connection_paused');
+  const currentMood = companionMood(state, textState, source, connected);
+  const mood = question.trim() && ['idle', 'noticed', 'answering', 'composing'].includes(currentMood) ? 'composing' : currentMood;
 
   useEffect(() => {
     if (visible && followLatest.current && scrollArea.current) scrollArea.current.scrollTop = scrollArea.current.scrollHeight;
@@ -54,17 +58,19 @@ export function AssistantPanel({ session, live, visible, onSettings }: {
     void controller.current?.start(value);
   }
 
-  return <section className="chat-workspace" aria-label="Ask ClickPilot">
+  return <section className="chat-workspace" aria-label="Ask ClickPilot" data-mood={mood}>
     <div className="conversation" ref={scrollArea} onScroll={() => {
       const element = scrollArea.current;
       if (element) followLatest.current = element.scrollHeight - element.scrollTop - element.clientHeight < 60;
     }}>
       {messages.length === 0 && !textActive && <div className="chat-empty">
-        <h1>What can I help<br />you with?</h1>
-        <p>Ask about this page.<br />I’ll help you find your way.</p>
+        <Companion mood={mood} className="welcome-companion" />
+        <h1>A little help,<br />right here.</h1>
+        <p>Ask about this page.<br />We’ll find the next step together.</p>
       </div>}
       <div className="chat-messages" role="log" aria-label="Conversation" aria-live="polite" aria-relevant="additions">
         {messages.map((message) => <div className={`chat-message ${message.role}`} key={message.id}>
+          {message.role === 'assistant' && <div className="reply-author"><Companion mood="idle" /><span>ClickPilot</span></div>}
           <span className="visually-hidden">{message.role === 'user' ? 'You' : 'ClickPilot'}: </span>
           {message.source === 'text' && message.role === 'user' && <span className="message-context">Selected text</span>}
           <p>{message.text}</p>

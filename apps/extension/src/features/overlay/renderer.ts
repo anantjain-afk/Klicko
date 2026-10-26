@@ -2,6 +2,7 @@ import { visibleRect } from '../observer/collect-elements';
 import { reportHighlightFailure } from './diagnostics';
 import { targetHitPoints } from './hit-test-points';
 import { createOverlaySurface } from './surface';
+import { uiTheme, uiDarkTheme, uiTokens } from '../../lib/ui-tokens';
 
 // All positions are current viewport CSS pixels; no snapshot coordinates are reused.
 function targetRect(target: Element): DOMRect | null {
@@ -39,15 +40,16 @@ export function showOverlay(
   const { host, shadow } = createOverlaySurface('clickpilot-overlay');
   const style = document.createElement('style');
   style.textContent = `
-    :host { pointer-events: none !important; }
+    :host { ${uiTheme} pointer-events: none !important; }
+    @media (prefers-color-scheme:dark) { :host { ${uiDarkTheme} } }
     *, *::before, *::after { box-sizing: border-box; pointer-events: none !important; }
-    .highlight { position: absolute; border: 3px solid #315c43; border-radius: 6px; }
+    .highlight { position: absolute; border: 3px solid var(--green); border-radius: 6px; }
     .tooltip { position: absolute; width: max-content; max-width: 280px; margin: 0;
-      padding: 10px 12px; border-radius: 8px; background: #244934; color: #fff;
-      font: 500 14px/1.5 system-ui, sans-serif; overflow-wrap: anywhere; white-space: pre-wrap;
-      box-shadow: 0 4px 12px rgb(0 0 0 / 18%); }
+      padding: 12px 14px; border-radius: 12px; background: var(--raised); color: var(--ink);
+      font: 500 14px/1.5 ${uiTokens.font}; overflow-wrap: anywhere; white-space: pre-wrap;
+      box-shadow: var(--shadow); }
     svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-    path { fill: none; stroke: #315c43; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+    path { fill: none; stroke: var(--green); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
   `;
   const highlight = document.createElement('div');
   highlight.className = 'highlight';

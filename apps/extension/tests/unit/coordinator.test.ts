@@ -86,8 +86,8 @@ it('recovery rejects extra/sensitive/expired fields; delayed writes cannot resur
 });
 it('buddy and popup positions clamp to the visible viewport; invalid commands cannot carry page data', () => {
   const viewport = { left: 10, top: 20, width: 300, height: 400 };
-  expect(defaultBuddyPosition(viewport)).toEqual({ x: 246, y: 356 });
-  expect(clampBuddy({ x: -1000, y: 1000 }, viewport)).toEqual({ x: 22, y: 364 });
-  expect(popupPosition({ x: 290, y: 30 }, { width: 250, height: 200 }, viewport)).toEqual({ x: 48, y: 86 });
+  expect(defaultBuddyPosition(viewport)).toEqual({ x: 234, y: 344 });
+  expect(clampBuddy({ x: -1000, y: 1000 }, viewport)).toEqual({ x: 22, y: 352 });
+  expect(popupPosition({ x: 290, y: 30 }, { width: 250, height: 200 }, viewport)).toEqual({ x: 48, y: 98 });
   expect(isTaskCommand({ type: 'TASK_COMMAND', action: 'start', epoch: crypto.randomUUID(), taskId: crypto.randomUUID(), id: crypto.randomUUID(), goal: 'Hello', selectedText: 'private' })).toBe(false);
 });

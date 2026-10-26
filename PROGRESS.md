@@ -1,8 +1,10 @@
 # ClickPilot progress
 
-Updated: 25 October 2026.
+Updated: 27 October 2026.
 
 ## Current status
+
+Mascot visual redesign: **AWAITING USER VERIFICATION**, 27 October 2026. The approved UI refresh is implemented with a shared green workshop robot, warm light/dark surfaces and restrained interaction. Extension lint, 124 unit tests and build passed; three preexisting type errors and four distinct preexisting browser failures were reproduced on untouched HEAD. All six buddy workflows passed in both focused browser runs; combined runs finished 41/42 and 28/31. Exact evidence, visual review, limitations and numbered Chrome checks are recorded at the end. No backend tests, Git operations, deployment or next milestone were performed.
 
 UX-2: **VERIFIED by the user**, 26 October 2026. The user explicitly confirmed “UX-2 is verified”. The minimal chat UI is implemented and manually verified by the user. The user explicitly requested manual verification and no tests; no unit/browser tests were added or run. Typecheck, lint, build, local empty-state visual previews and actual limitations are recorded in the UX-2 entry below.
 
@@ -810,3 +812,63 @@ Proposed plan is recorded in PLAN.md and presented for approval. Its principal a
 Chrome official references reviewed: extension worker lifecycle, storage.session, activeTab, content-script isolation and user-gesture requirements for sidePanel.open. The UX-3 brief explicitly requests a small focused test set, superseding UX-2's milestone-specific no-test instruction. No tests were created at planning time.
 
 **STOP: AWAITING PLAN APPROVAL.** No UX-3 implementation, UX-4, commit, push, deployment or publication is authorized.
+
+## Mascot visual redesign — 27 October 2026
+
+Status: **AWAITING USER VERIFICATION**. Implemented the approved visual UI scope only. The user limited changes to files needed for this UI and asked to skip backend tests. Historical milestones above retain their original status; this entry records the current redesign without treating automated evidence as user approval.
+
+### What changed and why
+
+- Created one original, compact green enamel workshop robot with a single visor, expressive ivory eyes, a brass neck and an ivory repair panel. Shared native SVG artwork keeps the floating buddy, expanded ask card and sidebar consistent without adding image assets or dependencies.
+- Refreshed the sidebar empty state, conversation, composer, settings, selection bubble and guidance tooltip with warm ivory/charcoal surfaces, readable type and a restrained green accent. Light/dark themes follow `prefers-color-scheme`. The launcher is 56px; existing positioning expectations were adjusted to its actual size.
+- Added subtle local cursor eye movement and a brief hover/focus blink. Existing task states determine head moods; there is no looping idle movement. Reduced-motion CSS removes animation and transitions. Existing keyboard focus, drag controls and task actions remain available.
+- UI files: `apps/extension/entrypoints/sidepanel/{main.tsx,style.css}`, `apps/extension/src/features/buddy/{companion.ts,CompanionAvatar.tsx,companion.css,buddy.css,buddy.ts,position.ts}`, `apps/extension/src/features/session/AssistantPanel.tsx`, `apps/extension/src/features/overlay/renderer.ts`, `apps/extension/src/features/text-assistant/bubble.ts` and `apps/extension/src/lib/ui-tokens.ts`. Only three existing launcher geometry expectations changed in `coordinator.test.ts`; no new behavior tests or dependencies were added.
+- Existing controls, permissions, backend and task coordinator behavior were kept intact. No voice, screenshot feature, Git commit/push, deployment or publication was introduced. `PROGRESS.md` is the documentation handoff; no design/skill artifacts were added.
+
+### Actual checks and baseline comparison
+
+| Exact command/check | Result |
+|---|---|
+| `corepack pnpm exec eslint apps/extension` | Exit 0 |
+| `corepack pnpm --filter @clickpilot/extension test` | Exit 0; **124 tests in 13 files passed** |
+| `corepack pnpm --filter @clickpilot/extension build` | Exit 0; unpacked output `apps/extension/.output/chrome-mv3` |
+| `corepack pnpm --filter @clickpilot/extension typecheck` | Exit 2; exactly three existing TS2339 errors in `src/features/session/background-tasks.ts`: line 246 (`type`), line 248 (`tabId`, `snapshot`) |
+| `corepack pnpm exec tsc --noEmit --project /tmp/clickpilot-redesign-baseline/apps/extension/tsconfig.json` | Exit 2; untouched HEAD snapshot reproduced the same three type errors |
+| `corepack pnpm exec playwright test tests/e2e/buddy.spec.ts tests/e2e/overlay.spec.ts --workers=1` | Exit 1; **41/42 passed**. Sole failure: existing `overlay.spec.ts:241`, panel disconnection leaves one overlay when zero is expected |
+| `corepack pnpm exec playwright test tests/e2e/overlay.spec.ts --grep '20 — panel disconnection' --workers=1` in `/tmp/clickpilot-redesign-baseline` | Exit 1; the same overlay failure reproduced against the built untouched HEAD snapshot |
+| `corepack pnpm exec playwright test tests/e2e/buddy.spec.ts tests/e2e/text-assistant.spec.ts --workers=1` | Exit 1; **28/31 passed**, including all six buddy workflows. Three selected-text failures: missing unsent-draft composer after worker restart (`text-assistant.spec.ts:122`); the error case waits for the obsolete `Retry explanation` label, while the current UI exposes `Retry` (`:178`); panel close leaves one pending selection bubble when zero is expected (`:197`) |
+| Baseline selected-text command below, in `/tmp/clickpilot-redesign-baseline` | Exit 1; all three selected-text failures reproduced against untouched HEAD. Baseline log: `/tmp/clickpilot-redesign-baseline-text-browser.log` |
+| `node /tmp/clickpilot-redesign-preview.cjs` | Exit 0; synthetic localhost extension renders with two intercepted responses, external requests blocked, no real backend/AI calls and no page errors |
+| `git diff --check` | Exit 0 after documentation handoff |
+| Backend tests | **NOT RUN**, as requested |
+
+Exact baseline selected-text command:
+
+```sh
+corepack pnpm exec playwright test tests/e2e/text-assistant.spec.ts --grep 'worker restart retains|MOCK text result: error|cleanup: close' --workers=1
+```
+
+The initial sandboxed browser run could not bind the local fixture server. The rerun with local tooling access executed the checks; no automatic approval review rejection occurred. The three baseline type errors and four distinct baseline browser failures remain outside this UI scope; typecheck and neither combined browser run are reported as passing. All six buddy workflows passed in both focused runs.
+
+### Visual and accessibility evidence
+
+Inspected twelve synthetic captures covering compact, ask, thinking, answer and guiding states; light/dark expanded cards; empty sidebar at 360px and 260px; a conversation; and narrow dark settings. Panels at both widths had no horizontal overflow. Reduced-motion computed styles showed `animation: none` and `transition: 0s`. Secondary-text contrast was at least 4.60:1. A fresh finish review of the captures and source returned **SHIP TO USER VERIFICATION**, with no material findings. The skill detector engine was unavailable, so screenshot and manual source review supplied the visual review instead.
+
+Captures in `/tmp/clickpilot-redesign/`: `compact-light.png`, `ask-light.png`, `thinking-light.png`, `answer-light.png`, `guiding-light.png`, `ask-dark.png`, `sidebar-empty-light-360.png`, `sidebar-empty-light-260.png`, `sidebar-empty-dark-360.png`, `sidebar-empty-dark-260.png`, `sidebar-conversation-light-360.png`, `settings-dark-260.png`. `ask-dark.png` shows a stopped conversation in the expanded card, not a fresh greeting. These synthetic previews do not establish real Chrome side-panel behavior or live service correctness.
+
+### Numbered manual Chrome verification
+
+1. Reload the unpacked extension from `apps/extension/.output/chrome-mv3` at `chrome://extensions`. Start the existing configured service and fixture server if needed, then activate ClickPilot on a permitted ordinary page. Expect the green robot and refreshed UI without a new permission request. Keep page, panel and worker consoles open; unexpected errors fail verification.
+2. Hover and focus the buddy: expect subtle eye movement and a brief blink without idle looping. Click to expand, drag to another position, and use Alt+Arrow keys and Home while the launcher is focused. Try Escape, Close and Hide. Expect existing movement/dismissal controls to work, no duplicate cards and no blocked page controls.
+3. With the existing sharing setting enabled, explicitly submit a synthetic question to the configured service. Expect thinking and answer states with the same robot. Start guidance and follow the highlighted target yourself: waiting, Stop and Done must remain usable. No page click, typing, submission or navigation may happen automatically; stale decoration or a late answer after Stop fails verification.
+4. Open the sidebar from the expanded card. Expect the card to collapse and the existing task/result to remain available in the shared sidebar. Test the conversation composer, menu and settings with keyboard focus; losing the current task, missing controls or clipped content fails verification.
+5. Enable the existing selected-text assistant, select public fixture text and open its bubble. Expect the refreshed styling and the same explicit question/submission flow. Merely selecting text must not submit a request. Check the answer and Stop behavior through the existing controls.
+6. Switch the system/browser between light and dark appearance. Check a narrow sidebar, browser zoom and long replies/settings: expect readable text, visible focus and no horizontal overflow. Scroll and resize during guidance: highlights/tooltips must stay aligned and decorative overlays must allow normal clicks through to the page.
+7. Enable the operating system/browser reduced-motion preference and repeat hover/focus and task-state changes. Expect no animation or transitions, with all controls still usable. Record any visual or console failure before approving this redesign.
+
+### Limits and stop gate
+
+- Real Chrome manual verification remains pending. Synthetic extension previews and headless tests do not verify actual side-panel opening/closure, every live website or real provider responses.
+- Three preexisting TypeScript errors and four distinct preexisting browser failures (one overlay and three selected-text cases) were independently reproduced on untouched HEAD and remain unresolved outside this visual scope. No backend tests were run.
+
+**STOP: AWAITING USER VERIFICATION.** Do not start a later milestone until the user explicitly verifies this redesign and approves further work. No commit, push, deployment or publication is authorized.

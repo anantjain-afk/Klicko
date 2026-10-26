@@ -1,46 +1,20 @@
 import { browser, type Browser } from 'wxt/browser';
 import { createOverlaySurface } from '../overlay/surface';
 import { isTaskView, type TaskAction, type TaskView } from '../../lib/task-messages';
-import { uiTokens } from '../../lib/ui-tokens';
-import { clampBuddy, defaultBuddyPosition, popupPosition, type Position, type Viewport } from './position';
+import { uiTokens, uiTheme, uiDarkTheme } from '../../lib/ui-tokens';
+import { createCompanion, companionMood } from './companion';
+import companionCss from './companion.css?inline';
+import buddyCss from './buddy.css?inline';
+import { BUDDY_SIZE, clampBuddy, defaultBuddyPosition, popupPosition, type Position, type Viewport } from './position';
 
 export function createBuddy(pageKey: () => string, valid: () => boolean, targetRect: () => DOMRect | null) {
   const surface = createOverlaySurface('clickpilot-buddy', true, 'closed');
   const style = document.createElement('style');
   style.textContent = `
-    :host { pointer-events:none !important; } * { box-sizing:border-box; }
-    [hidden] { display:none !important; }
-    button,textarea { font:inherit; } button { cursor:pointer; } button:disabled { cursor:default; opacity:.5; }
-    button:focus-visible,textarea:focus-visible { outline:2px solid ${uiTokens.green}; outline-offset:3px; }
-    .launcher { position:fixed; display:grid; place-items:center; width:44px; height:44px; padding:0;
-      border:2px solid #fafbf8; border-radius:16px; color:#fff; background:${uiTokens.green};
-      box-shadow:0 3px 14px rgb(15 35 22 / 22%); pointer-events:auto; touch-action:none; user-select:none; }
-    .launcher:hover { background:#234b34; }
-    .face { display:flex; align-items:center; justify-content:center; gap:7px; width:28px; height:26px; border:1.5px solid #c5d9bf; border-radius:9px; transform:rotate(-6deg); }
-    .eye { width:3px; height:7px; border-radius:3px; background:#fafbf8; }
-    .launcher[data-busy=true] .face { animation:thinking 1.4s ease-in-out infinite; }
-    .popup { position:fixed; width:min(280px,calc(100vw - 24px)); max-height:min(360px,calc(100dvh - 88px)); overflow:auto;
-      padding:14px; border-radius:16px; color:${uiTokens.ink}; background:${uiTokens.surface};
-      box-shadow:0 6px 28px rgb(15 35 22 / 24%); pointer-events:auto; font:400 14px/1.6 ${uiTokens.font};
-      color-scheme:light; scrollbar-width:thin; }
-    .heading,.actions { display:flex; align-items:center; gap:12px; }
-    .heading { justify-content:space-between; margin-bottom:10px; }
-    .name { font-size:13px; font-weight:650; } .tools { display:flex; gap:6px; }
-    button { border:0; border-radius:7px; background:transparent; color:${uiTokens.green}; }
-    .icon { display:grid; place-items:center; width:28px; height:28px; padding:0; }
-    .icon:hover { background:#e9efe5; }
-    .reply { margin:0 0 12px; white-space:pre-wrap; overflow-wrap:anywhere; }
-    .status,.note { margin:8px 0; color:${uiTokens.muted}; font-size:12px; line-height:1.5; overflow-wrap:anywhere; }
-    .status.error { color:#8b3d28; }
-    form { position:relative; margin-top:10px; border:1px solid #cdd8c9; border-radius:12px; background:#fff; }
-    textarea { display:block; width:100%; min-height:72px; max-height:110px; padding:10px 46px 10px 10px; resize:none; border:0; border-radius:inherit; color:${uiTokens.ink}; background:transparent; font-size:14px; line-height:1.5; caret-color:${uiTokens.green}; }
-    textarea::placeholder { color:#657260; opacity:1; }
-    .send { position:absolute; right:8px; bottom:8px; display:grid; place-items:center; width:30px; height:30px; padding:0; color:#fff; background:${uiTokens.green}; border-radius:9px; }
-    .actions { flex-wrap:wrap; margin-top:8px; } .actions button,.settings { padding:3px 0; font-size:12px; font-weight:600; }
-    .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
-    ::selection { background:#cde1d2; color:${uiTokens.ink}; }
-    @keyframes thinking { 50% { transform:rotate(3deg) translateY(-1px); } }
-    @media(prefers-reduced-motion:reduce) { .launcher[data-busy=true] .face { animation:none; } }
+    :host { ${uiTheme} --font:${uiTokens.font}; --buddy-size:${BUDDY_SIZE}px; }
+    @media (prefers-color-scheme:dark) { :host { ${uiDarkTheme} } }
+    ${companionCss}
+    ${buddyCss}
   `;
   let port: Browser.runtime.Port | null = null;
   let view: TaskView | null = null;
@@ -56,11 +30,11 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
   let position: Position | null = null;
   let pointer: { id: number; x: number; y: number; start: Position } | null = null;
   let dragged = false;
+  let blinkTimer: ReturnType<typeof setTimeout> | undefined;
   const launcher = document.createElement('button'); launcher.className = 'launcher'; launcher.type = 'button';
   launcher.setAttribute('aria-label', 'Ask ClickPilot'); launcher.title = 'Ask ClickPilot · Drag to move · Alt+arrow keys to reposition · Home to reset';
-  const face = document.createElement('span'); face.className = 'face'; face.setAttribute('aria-hidden', 'true');
-  for (let i = 0; i < 2; i++) { const eye = document.createElement('span'); eye.className = 'eye'; face.append(eye); }
-  launcher.append(face);
+  const avatar = document.createElement('span'); avatar.className = 'companion-avatar';
+  avatar.setAttribute('aria-hidden', 'true'); avatar.append(createCompanion()); launcher.append(avatar);
   const popup = document.createElement('section'); popup.className = 'popup'; popup.hidden = true;
   popup.id = 'clickpilot-quick-ask'; popup.setAttribute('role', 'region'); popup.setAttribute('aria-label', 'ClickPilot quick ask');
   launcher.setAttribute('aria-controls', popup.id); launcher.setAttribute('aria-expanded', 'false');
@@ -79,13 +53,17 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
   const name = document.createElement('span'); name.textContent = 'ClickPilot'; name.className = 'name';
   const tools = document.createElement('div'); tools.className = 'tools';
   const openSidebar = button('Open sidebar', () => openPanel(false), 'icon'); openSidebar.replaceChildren(icon('M14 4h6v6m0-6L10 14M10 4H4v16h16v-6'));
-  const hide = button('Hide ClickPilot', () => { command('hide'); visible = false; render(); }, 'icon'); hide.replaceChildren(icon('m6 6 12 12M18 6 6 18'));
-  tools.append(openSidebar, hide); heading.append(name, tools);
+  const close = button('Close ask card', () => { expanded = false; render(); launcher.focus({ preventScroll: true }); }, 'icon');
+  close.replaceChildren(icon('m6 6 12 12M18 6 6 18'));
+  const hide = button('Hide ClickPilot', () => { command('hide'); visible = false; render(); }, 'settings');
+  tools.append(openSidebar, close); heading.append(name, tools);
+  const greeting = document.createElement('h2'); greeting.className = 'greeting'; greeting.textContent = 'What would you like help with?';
   const reply = document.createElement('p'); reply.className = 'reply';
+  const replyLink = button('Read more in sidebar', () => openPanel(false), 'reply-link');
   const status = document.createElement('p'); status.className = 'status'; status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
   const form = document.createElement('form');
   const label = document.createElement('label'); label.className = 'sr'; label.htmlFor = 'clickpilot-ask'; label.textContent = 'Your question';
-  const input = document.createElement('textarea'); input.id = label.htmlFor; input.placeholder = 'Ask me'; input.maxLength = 240; input.rows = 2; input.autocomplete = 'off';
+  const input = document.createElement('textarea'); input.id = label.htmlFor; input.placeholder = 'Ask ClickPilot…'; input.maxLength = 240; input.rows = 2; input.autocomplete = 'off';
   input.addEventListener('input', () => { draft = input.value; render(); });
   const send = button('Send question', submit, 'send'); send.replaceChildren(icon('M12 19V5m-6 6 6-6 6 6'));
   form.append(label, input, send); form.addEventListener('submit', (event) => event.preventDefault());
@@ -99,7 +77,8 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
   const done = button('Done', () => command('done')); actions.append(stop, retry, next, done);
   const note = document.createElement('p'); note.className = 'note';
   const settings = button('Open Settings', () => openPanel(true), 'settings');
-  popup.append(heading, reply, status, form, actions, note, settings);
+  const footer = document.createElement('div'); footer.className = 'actions'; footer.append(hide);
+  popup.append(heading, greeting, reply, replyLink, status, form, actions, note, settings, footer);
   surface.shadow.append(style, launcher, popup);
 
   function viewport(): Viewport {
@@ -111,11 +90,11 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
   }
   function choosePosition(blocked?: DOMRect | null) {
     const v = viewport();
-    const candidates = [defaultBuddyPosition(v), { x: v.left + 20, y: v.top + v.height - 64 },
-      { x: v.left + v.width - 64, y: v.top + 20 }, { x: v.left + 20, y: v.top + 20 }];
+    const candidates = [defaultBuddyPosition(v), { x: v.left + 20, y: v.top + v.height - BUDDY_SIZE - 20 },
+      { x: v.left + v.width - BUDDY_SIZE - 20, y: v.top + 20 }, { x: v.left + 20, y: v.top + 20 }];
     return candidates.find((candidate) => {
-      if (blocked && overlaps({ ...candidate, width: 44, height: 44 }, blocked)) return false;
-      return [[4, 4], [22, 22], [40, 40]].every(([x, y]) => !document.elementsFromPoint(candidate.x + x!, candidate.y + y!).some((element) => {
+      if (blocked && overlaps({ ...candidate, width: BUDDY_SIZE, height: BUDDY_SIZE }, blocked)) return false;
+      return [[4, 4], [BUDDY_SIZE / 2, BUDDY_SIZE / 2], [BUDDY_SIZE - 4, BUDDY_SIZE - 4]].every(([x, y]) => !document.elementsFromPoint(candidate.x + x!, candidate.y + y!).some((element) => {
         if (element === surface.host) return false;
         return element.id.startsWith('clickpilot-') || !!element.closest('button,a,input,textarea,select,[role="button"],[role="link"]');
       }));
@@ -124,11 +103,18 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
   function place() {
     if (!visible || disposed) return;
     const v = viewport();
-    if (v.width < 68 || v.height < 68) { expanded = false; launcher.hidden = true; popup.hidden = true; return; }
+    if (v.width < BUDDY_SIZE + 24 || v.height < BUDDY_SIZE + 24) { expanded = false; launcher.hidden = true; popup.hidden = true; return; }
     launcher.hidden = false;
     position = clampBuddy(position ?? choosePosition(targetRect()), v);
     const blocked = targetRect();
-    if (!pointer && blocked && overlaps({ ...position, width: 44, height: 44 }, blocked)) position = choosePosition(blocked);
+    if (!pointer && blocked && overlaps({ ...position, width: BUDDY_SIZE, height: BUDDY_SIZE }, blocked)) position = choosePosition(blocked);
+    if (blocked) {
+      const dx = blocked.x + blocked.width / 2 - position.x - BUDDY_SIZE / 2;
+      const dy = blocked.y + blocked.height / 2 - position.y - BUDDY_SIZE / 2;
+      avatar.style.setProperty('--guide-x', `${Math.sign(dx) * 2}px`);
+      avatar.style.setProperty('--guide-y', `${Math.sign(dy)}px`);
+      avatar.style.setProperty('--guide-tilt', `${Math.sign(dx) * 4}deg`);
+    }
     launcher.style.left = `${position.x}px`; launcher.style.top = `${position.y}px`;
     if (!expanded) return;
     if (v.width < 180 || v.height < 180) { expanded = false; render(); return; }
@@ -141,7 +127,11 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
     try { port.postMessage({ type: 'TASK_COMMAND', action, id: crypto.randomUUID(), epoch: view.epoch, taskId: view.taskId,
       ...(goal === undefined ? {} : { goal }) }); } catch { connected = false; render(); }
   }
-  function openPanel(settings: boolean) { if (connected && port) port.postMessage({ type: 'OPEN_SIDEBAR', settings }); }
+  function openPanel(settings: boolean) {
+    if (!connected || !port) return;
+    port.postMessage({ type: 'OPEN_SIDEBAR', settings });
+    expanded = false; render();
+  }
   function submit() {
     if (!draft.trim() || submitting || !connected || !view?.guidanceConsent) return;
     submitting = draft.trim(); localError = ''; command('start', submitting); render();
@@ -151,6 +141,8 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
     launcher.setAttribute('aria-expanded', String(expanded));
     const text = view?.source === 'text'; const state = view?.state;
     const busy = text ? view?.textState.kind === 'requesting' : !!state && ['observing', 'selecting', 'highlighting', 'verifying', 'navigating'].includes(state.kind);
+    const mood = view ? companionMood(view.state, view.textState, view.source, connected) : 'idle';
+    avatar.dataset.mood = localError ? 'error' : draft.trim() && expanded && ['idle', 'noticed', 'answering', 'composing'].includes(mood) ? 'composing' : mood;
     launcher.dataset.busy = String(busy); launcher.setAttribute('aria-busy', String(busy));
     let latestReply = '';
     for (const message of [...(view?.messages ?? [])].reverse()) {
@@ -158,6 +150,9 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
       if (message.role === 'assistant') { latestReply = message.text; break; }
     }
     if (state?.kind === 'waiting' && !text) latestReply = state.instruction;
+    greeting.hidden = !!latestReply || busy || !!view?.active;
+    replyLink.hidden = latestReply.length <= 280;
+    replyLink.disabled = !connected;
     reply.textContent = latestReply.length > 280 ? `${latestReply.slice(0, 277)}…` : latestReply; reply.hidden = !latestReply;
     let message = !connected ? 'Reconnecting…' : '';
     if (connected && view) {
@@ -171,7 +166,7 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
     }
     if (localError) message = localError;
     status.textContent = message; status.hidden = !message;
-    status.className = `status${state?.kind === 'error' || (text && view?.textState.kind === 'error') ? ' error' : ''}`;
+    status.className = `status${localError || state?.kind === 'error' || (text && view?.textState.kind === 'error') ? ' error' : ''}`;
     send.disabled = !connected || !!submitting || !view?.guidanceConsent || !draft.trim(); openSidebar.disabled = !connected;
     stop.hidden = !view?.active && !busy;
     retry.hidden = text ? !(view?.textState.kind === 'error' && view.textState.canRetry) : state?.kind !== 'error' && state?.kind !== 'recovery';
@@ -222,12 +217,28 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
     expanded = !expanded; attempts = 0; connect(); render();
     if (expanded) input.focus({ preventScroll: true });
   });
+  function notice() {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    clearTimeout(blinkTimer);
+    avatar.dataset.blink = 'true';
+    blinkTimer = setTimeout(() => { avatar.dataset.blink = 'false'; }, 140);
+  }
+  launcher.addEventListener('pointerenter', notice);
+  launcher.addEventListener('focus', notice);
+  launcher.addEventListener('pointerleave', () => {
+    avatar.style.removeProperty('--look-x'); avatar.style.removeProperty('--look-y');
+  });
   launcher.addEventListener('pointerdown', (event) => {
     if (!event.isTrusted || event.button !== 0) return;
     pointer = { id: event.pointerId, x: event.clientX, y: event.clientY, start: position ?? defaultBuddyPosition(viewport()) };
     dragged = false; launcher.setPointerCapture(event.pointerId);
   });
   launcher.addEventListener('pointermove', (event) => {
+    if (!pointer) {
+      const bounds = launcher.getBoundingClientRect();
+      avatar.style.setProperty('--look-x', `${Math.max(-2, Math.min(2, (event.clientX - bounds.x - bounds.width / 2) / 12))}px`);
+      avatar.style.setProperty('--look-y', `${Math.max(-1, Math.min(1, (event.clientY - bounds.y - bounds.height / 2) / 18))}px`);
+    }
     if (!pointer || pointer.id !== event.pointerId) return;
     const x = event.clientX - pointer.x; const y = event.clientY - pointer.y;
     if (Math.hypot(x, y) > 5) dragged = true;
@@ -268,7 +279,7 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
     pageChanged,
     avoidTarget: place,
     dispose() {
-      disposed = true; clearTimeout(reconnectTimer); port?.disconnect(); surface.host.remove();
+      disposed = true; clearTimeout(reconnectTimer); clearTimeout(blinkTimer); port?.disconnect(); surface.host.remove();
       window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); window.removeEventListener('focus', focus);
       document.removeEventListener('visibilitychange', visibility);
       window.visualViewport?.removeEventListener('resize', place); window.visualViewport?.removeEventListener('scroll', place);

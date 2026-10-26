@@ -7,7 +7,10 @@ import { useGuidanceSession } from '../../src/features/session/useGuidanceSessio
 import { useAiPreferences } from '../../src/features/settings/useAiPreferences';
 import { SharingOnboarding, SharingSettings } from '../../src/features/settings/SharingSettings';
 import './style.css';
-import { uiTokens } from '../../src/lib/ui-tokens';
+import { uiTheme, uiDarkTheme } from '../../src/lib/ui-tokens';
+import { Companion } from '../../src/features/buddy/CompanionAvatar';
+import { companionMood } from '../../src/features/buddy/companion';
+import '../../src/features/buddy/companion.css';
 
 type View = 'chat' | 'settings' | 'developer' | 'text';
 type Mode = 'assistant' | 'manual' | 'mock';
@@ -59,7 +62,7 @@ function App() {
 
   return <main className="panel">
     <header className="panel-header">
-      <div className="brand"><span className="brand-mark" aria-hidden="true"><span /></span><span>ClickPilot</span></div>
+      <div className="brand"><Companion mood={companionMood(session.state, session.textState, session.sharedView?.source ?? 'guidance', session.connected)} /><span>ClickPilot</span></div>
       {onboarded && (view !== 'chat' ? <button className="text-button back-button" onClick={() => openView('chat')}>Back to chat</button>
         : <details className="panel-menu" ref={menu}>
           <summary aria-label="More options">
@@ -109,8 +112,7 @@ function App() {
 
 const rootElement = document.getElementById('root');
 if (!rootElement) throw new Error('ClickPilot panel root is missing.');
-document.documentElement.style.setProperty('--green', uiTokens.green);
-document.documentElement.style.setProperty('--surface', uiTokens.surface);
-document.documentElement.style.setProperty('--ink', uiTokens.ink);
-document.documentElement.style.setProperty('--muted', uiTokens.muted);
+const theme = document.createElement('style');
+theme.textContent = `:root { ${uiTheme} } @media (prefers-color-scheme: dark) { :root { ${uiDarkTheme} } }`;
+document.head.append(theme);
 createRoot(rootElement).render(<App />);
