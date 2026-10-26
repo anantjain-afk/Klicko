@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { activateToolbar, launchExtension, panelMessage } from './extension';
+import { activateToolbar, launchExtension, panelMessage, selectMode } from './extension';
 import type { PageSnapshot } from '../../apps/extension/src/lib/messages';
 
 async function openFixture(fixture = 'overlay.html') {
@@ -9,7 +9,7 @@ async function openFixture(fixture = 'overlay.html') {
   await activateToolbar(page, extension.extensionId);
   const panel = await extension.context.newPage();
   await panel.goto(`chrome-extension://${extension.extensionId}/sidepanel.html`);
-  await panel.getByRole('button', { name: 'Manual highlights', exact: true }).click();
+  await selectMode(panel, 'Manual highlights');
   await panel.setViewportSize({ width: 360, height: 800 });
   await page.bringToFront();
   await panel.getByRole('button', { name: 'Inspect this page' }).click();

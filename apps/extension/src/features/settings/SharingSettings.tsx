@@ -17,7 +17,7 @@ function SharingChoices({ guidance, selectedText, disabled, onChange }: {
 }
 
 function PrivacyNote() {
-  return <p className="sharing-note">Requests go through your configured backend to Google Gemini. Filtering has limits; use public pages and avoid personal information. Unpaid API usage may help improve Google’s products. No screenshots or input values are shared. Your choices stay on this device and can be changed here anytime.</p>;
+  return <p className="sharing-note">Requests go through your configured backend to Google Gemini. Filtering has limits; use public pages and avoid personal information. Unpaid API usage may help improve Google’s products. No screenshots or input values are shared. Active task goals and a short reply summary may stay in extension memory for up to 30 minutes for recovery; Stop or revoke sharing to clear them. Your choices stay on this device and can be changed here anytime.</p>;
 }
 
 export function SharingOnboarding({ sharing }: { sharing: Sharing }) {

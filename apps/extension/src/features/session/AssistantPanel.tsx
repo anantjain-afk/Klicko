@@ -37,8 +37,8 @@ export function AssistantPanel({ session, live, visible, onSettings }: {
     : state.kind === 'error' || state.kind === 'recovery';
   const canComplete = !isText && ['waiting', 'recovery', 'clicked'].includes(state.kind);
   const status = isText ? (textState.kind === 'answered' ? '' : textState.message) : guidanceStatus(session);
-  const showStatus = !!status && (messages.length > 0 || textActive);
   const isError = isText ? textState.kind === 'error' : state.kind === 'error';
+  const showStatus = !!status && (messages.length > 0 || textActive || isError || state.kind === 'connection_paused');
 
   useEffect(() => {
     if (visible && followLatest.current && scrollArea.current) scrollArea.current.scrollTop = scrollArea.current.scrollHeight;
@@ -70,7 +70,7 @@ export function AssistantPanel({ session, live, visible, onSettings }: {
           <p>{message.text}</p>
         </div>)}
       </div>
-      {session.restartNotice && <p className="chat-notice">Previous task interrupted — enter your goal to restart.</p>}
+      {session.restartNotice && <p className="chat-notice">Task restored. Continue when you’re ready.</p>}
       {!session.storageAvailable && <p className="chat-notice">Keep this panel open. ClickPilot couldn’t save a restart reminder.</p>}
     </div>
 

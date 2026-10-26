@@ -9,6 +9,7 @@ import { isMockFixtureUrl } from '../src/features/session/mock';
 import { isContentRequest, type OverlayResponse, type PageSnapshot, type PageInvalidation } from '../src/lib/messages';
 import { createTextBubble } from '../src/features/text-assistant/bubble';
 import { isTextPageCommand } from '../src/lib/text-assistant';
+import { createBuddy } from '../src/features/buddy/buddy';
 
 interface ObserverState {
   isValid: () => boolean;
@@ -33,6 +34,8 @@ export default defineContentScript({
     let navigationCheck: ReturnType<typeof setInterval> | undefined;
     let removeOverlay: (() => void) | null = null;
     let removeClickListener: (() => void) | null = null;
+    let activeTarget: Element | null = null;
+    const buddy = createBuddy(() => pageKey, () => ctx.isValid, () => activeTarget?.isConnected ? activeTarget.getBoundingClientRect() : null);
 
     let settling: AbortController | undefined;
     let settlingToken: string | undefined;
@@ -42,6 +45,7 @@ export default defineContentScript({
     });
 
     function clearOverlay() {
+      activeTarget = null;
       stopObservation?.();
       stopObservation = undefined;
       removeOverlay?.();
@@ -73,9 +77,14 @@ export default defineContentScript({
       clear();
       observedUrl = location.href;
       pageKey = crypto.randomUUID();
+      buddy.pageChanged();
     }
 
-    function handleMessage(message: unknown, sender: { id?: string }, sendResponse: (response: PageSnapshot | OverlayResponse | { ok: boolean }) => void) {
+    function handleMessage(message: unknown, sender: { id?: string }, sendResponse: (response: PageSnapshot | OverlayResponse | { ok: boolean; pageKey?: string }) => void) {
+      if (ctx.isValid && sender.id === browser.runtime.id && message && typeof message === 'object' && 'type' in message) {
+        if (message.type === 'SHOW_BUDDY') { checkNavigation(); buddy.show(); sendResponse({ ok: true }); return; }
+        if (message.type === 'PAGE_IDENTITY') { checkNavigation(); sendResponse({ ok: true, pageKey }); return; }
+      }
       if (ctx.isValid && sender.id === browser.runtime.id && isTextPageCommand(message)) {
         checkNavigation(); sendResponse(textBubble.handle(message)); return;
       }
@@ -114,6 +123,8 @@ export default defineContentScript({
           && registry.get(message.targetId) === target;
         if (target && isCurrent()) {
           clearOverlay();
+          activeTarget = target;
+          buddy.avoidTarget();
           removeOverlay = showOverlay(target, message.instruction, isCurrent, () => {
             clearOverlay();
             notify('OVERLAY_INVALIDATED', message.targetId);
@@ -202,6 +213,7 @@ export default defineContentScript({
       isValid: () => ctx.isValid,
       dispose() {
         clear();
+        buddy.dispose();
         textBubble.dispose();
         window.removeEventListener('pagehide', onPageHide);
         if (ctx.isValid) {

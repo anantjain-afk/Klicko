@@ -51,7 +51,7 @@ const INSPECTION_ERRORS = {
   changed: 'The page changed during inspection. Retry on the current page.',
 };
 
-// The panel owns one active run. Async replies can change state only while
+// The caller owns one active run. Async replies can change state only while
 // their run is current; clearing an old snapshot cannot erase a newer one.
 function createSession(client: SessionClient, onChange: (state: GuidanceState) => void, live: boolean) {
   let state: GuidanceState = { kind: 'idle' };
@@ -279,6 +279,18 @@ function createSession(client: SessionClient, onChange: (state: GuidanceState) =
 
   return {
     start, onPageEvent, pause, suspend, navigation, resumeNavigation,
+    recovery: () => active ? { sessionId: active.sessionId, requestId: requestNumber,
+      goal: active.task, context: structuredClone(active.context), status: state.kind } : null,
+    restore(saved: { sessionId: string; requestId: number; goal: string; context: TaskContext }, tabId: number) {
+      cancel(false);
+      requestNumber = saved.requestId;
+      const context = structuredClone(saved.context);
+      if (context.previousStep?.status === 'pending') context.previousStep.status = 'unverifiable';
+      active = { sessionId: saved.sessionId, requestId: saved.requestId, task: saved.goal, context,
+        tabId, abort: new AbortController(), scenario: 'normal', settle: true };
+      transition({ kind: 'connection_paused', canContinue: true,
+        message: 'Your task is ready to resume. Continue to check this page again.' });
+    },
     ownedTab: () => active?.tabId,
     async continueTask() {
       const run = active;

@@ -195,6 +195,10 @@ export function createTextBubble(pageKey: () => string, valid: () => boolean, se
     handle(command: TextPageCommand) {
       if (command.type === 'DISABLE_TEXT') { if (enabled?.sessionId === command.sessionId) disable(); return { ok: true }; }
       if (command.type === 'ENABLE_TEXT') {
+        if (command.resumeDraft && suspendedDraft !== undefined && current && current.identity.pageKey === pageKey()) {
+          current.identity.sessionId = command.sessionId;
+          if (enabled) enabled.sessionId = command.sessionId;
+        }
         if (enabled?.sessionId !== command.sessionId) cancel();
         enabled = command; lastUrl = location.href;
         const draft = suspendedDraft;

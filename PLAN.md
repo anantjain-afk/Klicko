@@ -1,6 +1,6 @@
 # ClickPilot implementation plan
 
-Current work: UX-1 is VERIFIED by the user; UX-2 is approved for a minimal chat UI. Earlier milestone gates are historical.
+Current work: UX-1 and UX-2 are VERIFIED by the user. UX-3 is planning only and awaits approval. Earlier milestone gates are historical.
 
 Status update — 25 October 2026: the user confirmed milestone 6B is complete and approved scoped 7A implementation with the strict result union and retained side-panel explanation. The 7A branch was based on 6A; it has been fast-forwarded to existing 6B commit `109e04f` without creating a commit. Historical milestone records below are retained.
 
@@ -427,3 +427,47 @@ Scope: default to the existing AI assistant, with a small branded header/menu, o
 Files: side-panel main/style, AssistantPanel and a small conversation presentation hook, existing Settings presentation, and ManualInspection moved unchanged into its own UI module. Selected-text results join the conversation instead of a separate always-visible section.
 
 Acceptance: ordinary use opens directly to a minimal chat; messages and input survive visiting Settings; consent and all existing assistance remain reachable; narrow panels scroll the conversation while the composer stays at the bottom. User performs Chrome workflow/visual verification. Record actual checks and any limitations in PROGRESS.md, mark AWAITING USER VERIFICATION and stop.
+
+## UX-3 — Floating Buddy — proposed plan, 26 October 2026
+
+**Status: AWAITING PLAN APPROVAL.** UX-2 verification is confirmed. The attached UX-3 brief authorizes planning only.
+
+### Ownership and recovery decision
+
+Recommend one logical task coordinator per activated tab, hosted by the MV3 background while awake, reusing createAssistantSession, createTextSession and the existing request/observation/validation pipeline. Buddy and sidebar are subscribers/command senders; neither starts an independent AI engine. The content script owns only its isolated UI, local DOM registry/geometry and trusted action observation. The sidebar becomes a view of that tab's current task rather than the authority whose destruction ends it. Manual/Mock tools explicitly stop the tab's active assistance before taking control.
+
+Worker heap cannot be recovery storage, and a content document is destroyed by full navigation. Meeting both closed-sidebar operation and original-goal recovery therefore requires either another surviving owner document or temporary text retention outside that document. Do not add an offscreen/hidden-document keepalive. **Request explicit approval** for a separate bounded trusted chrome.storage.session record: current filtered goal, existing bounded last-step context, latest validated display result, finite phase, session/request/revision/attempt identifiers, tab/document binding, and expiry. Propose the existing 30-minute expiry checked on access and a strict 16 KiB UTF-8 per-record cap. No raw DOM inventory, full URL/path, field value, selected passage, screenshot or complete transcript is stored. This is in-memory extension-session recovery, not disk/database/sync history, but filtered goal/reply text can still contain personal information; it changes the existing 6B metadata-only policy and remains unapproved.
+
+Stop/Done/replacement/revocation/tab closure remove recovery authority and expire old callbacks. Serialize per-tab transitions with revision fencing so late writes/results cannot revive a stopped/replaced task. On worker restart restore only a paused logical task/current display state, never a target, rectangle or pending request. Content-side targeting is cleared and must be freshly inspected. If storage fails, pause rather than pretend continuity is safe. The current turn can hydrate a newly opened sidebar; older closed-panel conversation history is not restored. Existing selected-text requests still require fresh selection after invalidation/restart; never store the selected passage to retry.
+
+**Alternative if text retention is declined:** keep current metadata-only storage, allow a buddy interaction while its owner document survives, and require re-entry after full navigation without a surviving sidebar. This cannot promise the full requested recovery behavior. Do not implement either option until approved.
+
+### UI and interactions
+
+Use a roughly 44px rounded companion derived from the UX-2 ClickPilot mark, green #315c43, warm surface #fafbf8, ink #202b23, existing font stack and 16px floating-surface corners. Native SVG/CSS only; no graphics dependency. Bottom-right placement with a small inset. Opaque surfaces plus restrained contrast/shadow remain readable on light/dark sites.
+
+States: hidden, idle/collapsed, composing, thinking, response, guiding, paused and error. Listening/speaking are future design concepts only, with no audio APIs/permissions/runtime handlers. Quiet idle, subtle busy feedback and short transitions; reduced-motion disables animation.
+
+Click opens a compact Ask me composer without opening the sidebar or making a request. Enter submits, Shift+Enter adds a line, Escape dismisses the composer; Stop/Cancel is explicit for an active request. Separate Open sidebar and Hide actions remain available. Opening the sidebar must call sidePanel.open promptly from the actual user gesture before unrelated asynchronous work. Missing AI consent shows a local explanation and explicit Open Settings action; reuse the existing sidebar onboarding/preferences rather than introduce a second consent authority.
+
+Pointer capture plus a movement threshold separates drag from click/submission. Provide keyboard reposition/reset and visible focus, named controls and polite status announcements. Clamp collapsed/expanded geometry to visualViewport on drag, scroll, resize and zoom; flip the composer when space is tight. Reuse local geometry checks to avoid the active target and recognized controls without extracting extra labels/text. If safe space is unavailable, collapse/hide or offer the sidebar. A small floating control cannot guarantee zero overlap on every website; drag and Hide are explicit fallbacks. Hide pauses active buddy assistance and clears decoration/pending work; re-show does not replay a request.
+
+### Messages, permissions and lifecycle
+
+- Coordinator serializes Start/Stop/Retry/Continue/Done, owns a monotonically advancing revision and publishes current turn/progress to both views. Attaching a sidebar hydrates state once and deduplicates events; detaching it does not cancel the task. A buddy shows a concise excerpt/the existing instruction; the sidebar shows the full already-validated result, without a second AI call for expansion.
+- Toolbar activation shows the buddy instead of automatically opening the sidebar. No request or DOM-context upload on show, open, drag, attach or re-show. Existing explicitly initiated multi-step follow-ups remain consent- and user-action-gated. Saved consent is always reread/enforced by the coordinator, not accepted as a boolean supplied by a content script.
+- Reuse UX-1 activation intent plus actual scripting-access probes, 6B active-tab/page identity, bounded settling/step limits and conservative continuation. Only a permitted focused tab can perform work; switching pauses and never transfers a task. Same-origin full navigation gets a fresh content document/registry. Automatic continuation remains limited to an eligible trusted continuing action; unrelated/manual navigation or uncertain recovery requires Continue.
+- Cross-origin navigation clears temporary access. The buddy cannot inject a reactivation UI on a destination it cannot access: toolbar activation is required there. Restricted pages/unsupported roots remain unsupported. No permanent host permission, tabs/webNavigation/offscreen permission or keepalive mechanism is proposed.
+- Add a closed Shadow DOM option for the buddy while preserving existing overlay behavior. Keep runtime state in isolated-world closures; accept only narrow validated extension messages with sender tab/frame/document checks, trusted UI gestures and current revisions. Do not expose a page postMessage command bridge, raw snapshots, secrets or storage access. Closed Shadow DOM is defense in depth, not a security boundary: the page can still obscure/remove/spoof a host. Preserve literal text rendering and independent live-target validation. Only the widget's actual footprint accepts pointer events.
+
+### Minimal implementation areas after approval
+
+New buddy surface/positioning/styles; a per-tab coordinator/recovery module and small shared view-state/command types; a small reusable UI token module. Modify background/content entrypoints, existing session/checkpoint adapters, useGuidanceSession/useConversation and sidebar views to subscribe rather than compete for ownership. Make only the targeted session serialization/hydration changes necessary for recovery; retain the existing reasoning/observer/overlay transport and backend contracts. Update privacy/setup docs and focused fixtures.
+
+### Focused verification after approval
+
+Reuse session/checkpoint/navigation/overlay/text regressions. Add roughly six grouped cases: show/hide/clamping/non-blocking interaction; explicit submission/consent; sidebar attach/detach and duplicate start prevention; Stop/replacement/late events/storage writes; worker termination/recovery; same-origin/full navigation, cross-origin reactivation, tab isolation and cleanup. Group unit/browser coverage instead of a large permutation suite. The UX-3 brief requests tests again; UX-2's waiver does not apply to this milestone.
+
+Run corepack pnpm typecheck, corepack pnpm lint, corepack pnpm test, relevant Playwright cases, corepack pnpm build (Worker dry-run), and git diff --check. Exact final commands/results go in PROGRESS.md. Manually verify actual Chrome with the sidebar closed, buddy question/guidance, sidebar opening mid-request and closing mid-task, drag/keyboard/zoom/light-dark sites, natural worker sleep with DevTools detached, navigation/revocation and ordinary page controls. Finish at AWAITING USER VERIFICATION.
+
+Approval must explicitly cover the ownership migration and chosen recovery/privacy policy. No buddy, voice, screenshot, framework, new permission, deployment or UX-4 work is implemented by this plan.

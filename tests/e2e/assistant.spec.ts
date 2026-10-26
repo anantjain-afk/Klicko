@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { test, expect, type Page } from '@playwright/test';
-import { activateToolbar, launchExtension, openSharingSettings, stopExtensionWorker } from './extension';
+import { activateToolbar, launchExtension, openSharingSettings, stopExtensionWorker, selectMode, setConsent } from './extension';
 
 // Test-only HTTP server. These browser tests NEVER contact Gemini.
 test.describe.configure({ mode: 'serial' });
@@ -71,25 +71,24 @@ async function openAssistant(fixture = 'guidance.html', host = '127.0.0.1') {
   const panel = await extension.context.newPage();
   await panel.goto(`chrome-extension://${extension.extensionId}/sidepanel.html`);
   await panel.setViewportSize({ width: 360, height: 1000 });
-  await panel.getByRole('button', { name: 'AI assistant', exact: true }).click();
-  await openSharingSettings(panel);
-  await panel.getByRole('checkbox', { name: /^Webpage guidance/ }).check();
+  await selectMode(panel, 'AI assistant');
+  await setConsent(panel, 'guidance', true);
   await page.bringToFront();
   return { ...extension, page, panel };
 }
 async function submit(panel: Page, question = 'Find primary target') {
   await panel.getByLabel('What would you like help with?').fill(question);
-  await panel.getByRole('button', { name: /Ask Gemini|Send new question/ }).click();
+  await panel.getByRole('button', { name: 'Send message' }).click();
 }
 
 test('MOCK API: panel explanation, exact tooltip, consent, safe payload and no automatic action', async () => {
   const { context, page, panel } = await openAssistant();
   try {
-    await panel.getByRole('checkbox', { name: /^Webpage guidance/ }).uncheck();
+    await setConsent(panel, 'guidance', false);
     await panel.getByLabel('What would you like help with?').fill('Find primary target');
-    await expect(panel.getByRole('button', { name: 'Ask Gemini' })).toBeDisabled();
+    await expect(panel.getByRole('button', { name: 'Send message' })).toBeDisabled();
     expect(requests).toHaveLength(0);
-    await panel.getByRole('checkbox', { name: /^Webpage guidance/ }).check();
+    await setConsent(panel, 'guidance', true);
     await submit(panel);
     await expect(panel.getByRole('status')).toContainText('Use the primary control');
     await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Primary target.');
@@ -142,7 +141,7 @@ for (const kind of ['unknown', 'invalid-answer', 'stale', 'oversized', 'rate-lim
       await expect(panel.getByRole('alert')).not.toContainText('UNTRUSTED NARRATIVE');
       await expect(page.locator('#clickpilot-overlay')).toHaveCount(0);
       expect(requests).toHaveLength(1);
-      await panel.getByRole('button', { name: 'Mock guidance', exact: true }).click();
+      await selectMode(panel, 'Mock guidance');
       await expect(panel.getByRole('button', { name: 'Start mock guidance' })).toBeVisible();
     } finally { await context.close(); }
   });
@@ -267,7 +266,7 @@ for (const action of ['stop', 'replace', 'consent', 'close', 'tab', 'navigate'])
       await expect(panel.getByRole('status')).toContainText('Checking the updated page');
       if (action === 'stop') await panel.getByRole('button', { name: 'Stop', exact: true }).click();
       if (action === 'replace') { outcome = 'answer'; await submit(panel, 'New goal'); }
-      if (action === 'consent') await panel.getByRole('checkbox', { name: /^Webpage guidance/ }).uncheck();
+      if (action === 'consent') await setConsent(panel, 'guidance', false);
       if (action === 'close') await panel.close();
       if (action === 'tab') { const other = await context.newPage(); await other.goto('http://127.0.0.1:4173/second.html'); }
       if (action === 'navigate') await page.goto('http://127.0.0.1:4173/second.html');
@@ -463,7 +462,7 @@ test('MOCK API: 6B panel destruction leaves restart-only metadata and a fresh re
     await expect(page.locator('#clickpilot-overlay')).toHaveCount(0);
     const reopened = await context.newPage();
     await reopened.goto(`chrome-extension://${extensionId}/sidepanel.html`);
-    await reopened.getByRole('button', { name: 'AI assistant', exact: true }).click();
+    await selectMode(reopened, 'AI assistant');
     await expect(reopened.getByText('Previous task interrupted — enter your goal to restart.')).toBeVisible();
     await expect(reopened.getByLabel('What would you like help with?')).toBeEmpty();
     await openSharingSettings(reopened);

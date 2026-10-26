@@ -28,6 +28,10 @@ export function ManualInspection({ session }: { session: ReturnType<typeof useGu
   const currentTargetId = useRef<string | null>(null);
   const panelConnection = useRef<Browser.runtime.Port | null>(null);
 
+  useEffect(() => {
+    if (session.sharedView?.active && currentSnapshot.current) clearInspection();
+  }, [session.sharedView?.taskId, session.sharedView?.active]);
+
   function clearInspection() {
     requestId.current += 1;
     const tabId = observedTabId.current;

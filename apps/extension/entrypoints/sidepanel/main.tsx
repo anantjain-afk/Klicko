@@ -7,6 +7,7 @@ import { useGuidanceSession } from '../../src/features/session/useGuidanceSessio
 import { useAiPreferences } from '../../src/features/settings/useAiPreferences';
 import { SharingOnboarding, SharingSettings } from '../../src/features/settings/SharingSettings';
 import './style.css';
+import { uiTokens } from '../../src/lib/ui-tokens';
 
 type View = 'chat' | 'settings' | 'developer' | 'text';
 type Mode = 'assistant' | 'manual' | 'mock';
@@ -35,6 +36,11 @@ function App() {
     return () => { window.removeEventListener('pointerdown', close); window.removeEventListener('keydown', escape); };
   }, []);
   useEffect(() => { if (view !== 'chat') heading.current?.focus(); }, [view]);
+  useEffect(() => {
+    const settings = () => setView('settings');
+    window.addEventListener('clickpilot-settings', settings);
+    return () => window.removeEventListener('clickpilot-settings', settings);
+  }, []);
 
   function changeMode(next: Mode) {
     if (next === mode) return;
@@ -46,7 +52,8 @@ function App() {
     if (next === 'chat') changeMode('assistant');
   }
   function newChat() {
-    session.textController.current?.stop(); session.controller.current?.stop();
+    session.textController.current?.stop();
+    if (session.controller.current?.newChat) session.controller.current.newChat(); else session.controller.current?.stop();
     setConversationKey((value) => value + 1); openView('chat');
   }
 
@@ -102,4 +109,8 @@ function App() {
 
 const rootElement = document.getElementById('root');
 if (!rootElement) throw new Error('ClickPilot panel root is missing.');
+document.documentElement.style.setProperty('--green', uiTokens.green);
+document.documentElement.style.setProperty('--surface', uiTokens.surface);
+document.documentElement.style.setProperty('--ink', uiTokens.ink);
+document.documentElement.style.setProperty('--muted', uiTokens.muted);
 createRoot(rootElement).render(<App />);

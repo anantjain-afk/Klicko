@@ -4,7 +4,7 @@ Updated: 25 October 2026.
 
 ## Current status
 
-UX-2: **AWAITING USER VERIFICATION**, 25 October 2026. The minimal chat UI is implemented. The user explicitly requested manual verification and no tests; no unit/browser tests were added or run. Typecheck, lint, build, local empty-state visual previews and actual limitations are recorded in the UX-2 entry below.
+UX-2: **VERIFIED by the user**, 26 October 2026. The user explicitly confirmed “UX-2 is verified”. The minimal chat UI is implemented and manually verified by the user. The user explicitly requested manual verification and no tests; no unit/browser tests were added or run. Typecheck, lint, build, local empty-state visual previews and actual limitations are recorded in the UX-2 entry below.
 
 UX-1: **VERIFIED by the user**, 25 October 2026. Approved reliability/onboarding scope implemented. Final typecheck/lint/build passed; **92 API + 119 extension unit tests** and **131/131 Chromium tests** passed. The UX-1 entry at the end records the root cause, changes, exact checks, visual evidence, limitations and numbered Chrome steps. The user confirmed UX-1 verification and approved the minimal UX-2 chat redesign; its current evidence is recorded in the UX-2 entry below.
 
@@ -758,7 +758,7 @@ Logs: `/tmp/clickpilot-ux1-typecheck.log`, `/tmp/clickpilot-ux1-lint.log`, `/tmp
 
 ## UX-2 — Minimal chat sidebar — 25 October 2026
 
-Status: **AWAITING USER VERIFICATION**. The user confirmed UX-1 verification and approved UX-2, asking to keep only a very minimal chat-like interface. Their subsequent instruction, “just fix the ui , i will check manually no need for any tests”, overrides the usual automated-test gate for this milestone. No unit or browser tests were added or run. Existing uncommitted UX-1 implementation and documentation were preserved. No commit, push, deployment or publication was performed.
+Status: **VERIFIED by the user**, 26 October 2026. The user explicitly confirmed “UX-2 is verified”. The user confirmed UX-1 verification and approved UX-2, asking to keep only a very minimal chat-like interface. Their subsequent instruction, “just fix the ui , i will check manually no need for any tests”, overrides the usual automated-test gate for this milestone. No unit or browser tests were added or run. Existing uncommitted UX-1 implementation and documentation were preserved. No commit, push, deployment or publication was performed.
 
 ### UI changes
 
@@ -797,4 +797,16 @@ Logs: `/tmp/clickpilot-ux2-typecheck.log`, `/tmp/clickpilot-ux2-lint.log`, `/tmp
 - Functional and real Chrome side-panel verification is intentionally left to the user. Typecheck/lint/build and empty-state previews do not establish guidance, selection, cancellation or menu workflow correctness. Existing automated browser specs still target the prior panel controls and were not updated/executed under the user’s UI-only instruction; historical UX-1 results do not verify UX-2.
 - Display history is temporary. It is not model conversation memory and is lost when its panel document is destroyed. A selected passage is still submitted via the existing on-page composer, with its independent consent; the sidebar does not silently attach it to ordinary messages.
 
-**STOP: AWAITING USER VERIFICATION.** Fix UX-2 only if verification fails. Do not start another milestone, commit, push, deploy or publish without explicit authorization.
+**STOP: VERIFIED.** UX-3 planning was subsequently requested; implementation, Git operations, deployment and publication remain unapproved.
+
+## UX-3 — Floating Buddy planning — 26 October 2026
+
+Status: **AWAITING PLAN APPROVAL — IMPLEMENTATION NOT APPROVED**. Read the attached brief, current architecture/plan/progress and actual session, checkpoint, background, content, Shadow DOM, permissions and UX-2 presentation code. Confirmed UX-2 verification from the user's explicit message. Runtime source is unchanged. No tests/builds/provider calls or Git operations were performed for this planning request; documentation diff checked only.
+
+The current panel owns createAssistantSession/createTextSession and their event/connection lifecycle. Background request/cleanup state is scoped to its panel port; the checkpoint store has a single panel owner, not per-tab ownership. useConversation records display history in the panel. The shared overlay helper currently creates open Shadow DOM. Therefore adding a floating widget alone cannot meet sidebar-independent navigation/recovery requirements.
+
+Proposed plan is recorded in PLAN.md and presented for approval. Its principal approval gate is replacing panel-owned task authority with a per-tab recoverable worker coordinator and explicitly allowing a bounded, trusted, in-memory session recovery record containing filtered current task text/latest result. This would exceed 6B's metadata-only policy. Filtering cannot guarantee absence of personal information, so it is not silently authorized. If this exception is declined, the smaller alternative retains current metadata-only storage and requires goal re-entry after full navigation when no owning panel document survives. No claim that all UX-3 continuity requirements can be met under that alternative.
+
+Chrome official references reviewed: extension worker lifecycle, storage.session, activeTab, content-script isolation and user-gesture requirements for sidePanel.open. The UX-3 brief explicitly requests a small focused test set, superseding UX-2's milestone-specific no-test instruction. No tests were created at planning time.
+
+**STOP: AWAITING PLAN APPROVAL.** No UX-3 implementation, UX-4, commit, push, deployment or publication is authorized.

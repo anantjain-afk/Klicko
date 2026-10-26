@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { test, expect, type Page } from '@playwright/test';
-import { activateToolbar, launchExtension, openSharingSettings, stopExtensionWorker } from './extension';
+import { activateToolbar, launchExtension, openSharingSettings, stopExtensionWorker, selectMode, setConsent, textAction } from './extension';
 
 test.describe.configure({ mode: 'default' });
 let requests: Record<string, unknown>[] = [];
@@ -39,12 +39,11 @@ async function setup(consent = true, activated = true) {
   if (activated) await activateToolbar(page, extension.extensionId);
   const panel = await extension.context.newPage(); await panel.goto(`chrome-extension://${extension.extensionId}/sidepanel.html`);
   await panel.setViewportSize({ width: 360, height: 1000 });
-  await openSharingSettings(panel);
-  if (consent) await panel.getByRole('checkbox', { name: /^Selected-text assistance/ }).check();
+  if (consent) await setConsent(panel, 'text', true);
   await page.bringToFront();
   if (activated) {
-    await panel.getByRole('button', { name: 'Resume text assistant' }).click();
-    await expect(panel.getByRole('region', { name: 'Text explanation', exact: true })).toContainText('Select public webpage text');
+    await textAction(panel, 'text-enable');
+
   }
   return { ...extension, page, panel };
 }
@@ -57,7 +56,7 @@ async function compose(page: Page) {
   await page.getByLabel('Question about this passage').fill('Explain this passage.');
 }
 async function submit(page: Page) { await compose(page); await page.getByRole('button', { name: 'Ask', exact: true }).click(); }
-const reply = (panel: Page) => panel.getByRole('region', { name: 'Text explanation', exact: true });
+const reply = (panel: Page) => panel.locator('.chat-workspace');
 
 test('selection completes before one bubble appears; focus preserves passage; only explicit Ask uploads', async () => {
   const { context, page, panel } = await setup();
@@ -74,7 +73,7 @@ test('selection completes before one bubble appears; focus preserves passage; on
     await expect(reply(panel)).toContainText(detail);
     await expect(page.locator('#clickpilot-text')).toContainText(quick);
     await page.locator('#clickpilot-text .bubble').screenshot({ path: '/tmp/clickpilot-7a-bubble.png' });
-    await panel.getByRole('region', { name: 'Selected text assistant', exact: true }).screenshot({ path: '/tmp/clickpilot-7a-panel.png' });
+    await panel.getByRole('log', { name: 'Conversation' }).screenshot({ path: '/tmp/clickpilot-7a-panel.png' });
     expect(requests).toHaveLength(1);
     expect(Object.keys(requests[0]).sort()).toEqual(['protocolVersion', 'operation', 'sessionId', 'requestId', 'pageKey', 'selectionId', 'selectedText', 'question'].sort());
     expect(requests[0].selectedText).toContain('Photosynthesis');
@@ -89,13 +88,13 @@ test('toolbar activation and specific text consent are required; Cancel and Esca
   const { context, page, panel, extensionId } = await setup(false, false);
   try {
     await page.locator('#passage').click({ clickCount: 3 }); await page.waitForTimeout(250); await expect(page.locator('#clickpilot-text')).toHaveCount(0);
-    await activateToolbar(page, extensionId); await panel.reload(); await openSharingSettings(panel); await page.bringToFront();
-    await panel.getByRole('button', { name: 'Resume text assistant' }).click(); await select(page);
+    await activateToolbar(page, extensionId); await panel.reload(); await page.bringToFront();
+    await textAction(panel, 'text-enable'); await select(page);
     await page.getByRole('button', { name: 'Ask ClickPilot', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Ask', exact: true })).toBeDisabled();
     await page.getByLabel('Question about this passage').press('Escape'); await expect(page.locator('#clickpilot-text')).toHaveCount(0);
-    await panel.getByRole('checkbox', { name: /^Selected-text assistance/ }).check(); await page.bringToFront();
-    await panel.getByRole('button', { name: 'Resume text assistant' }).click();
+    await setConsent(panel, 'text', true); await page.bringToFront();
+    await textAction(panel, 'text-enable');
     await compose(page); await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     expect(requests).toHaveLength(0);
   } finally { await context.close(); }
@@ -126,7 +125,7 @@ test('worker restart retains an unsent text draft and a completed panel explanat
     await expect(reply(panel)).toContainText(detail);
     await stopExtensionWorker(page, extensionId);
     await expect(reply(panel)).toContainText(detail);
-    await panel.reload(); await openSharingSettings(panel);
+    await panel.reload();
     await expect(panel.getByRole('checkbox', { name: /^Selected-text assistance/ })).toBeChecked();
     await expect(reply(panel)).not.toContainText(detail);
     expect(requests).toHaveLength(1);
@@ -187,8 +186,8 @@ for (const action of ['cancel', 'stop', 'withdraw', 'new-selection', 'navigate',
     try {
       mode = 'delayed'; await submit(page); await expect.poll(() => requests.length).toBe(1);
       if (action === 'cancel') await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-      if (action === 'stop') await panel.getByRole('button', { name: 'Stop text assistant' }).click();
-      if (action === 'withdraw') await panel.getByRole('checkbox', { name: /^Selected-text assistance/ }).uncheck();
+      if (action === 'stop') await textAction(panel, 'text-stop');
+      if (action === 'withdraw') await setConsent(panel, 'text', false);
       if (action === 'new-selection') await select(page, '#second');
       if (action === 'navigate') await page.goto('http://127.0.0.1:4173/second.html');
       if (action === 'spa') await page.evaluate(() => history.pushState({}, '', '/text.html?route=new'));
@@ -221,12 +220,12 @@ test('nested scroll and insufficient viewport space remove floating UI while the
 test('text composer replaces Manual decoration; starting Manual inspection ends text assistance', async () => {
   const { context, page, panel } = await setup();
   try {
-    await panel.getByRole('button', { name: 'Manual highlights', exact: true }).click();
+    await selectMode(panel, 'Manual highlights');
     await panel.getByRole('button', { name: 'Inspect this page' }).click();
     await expect(panel.getByRole('heading', { name: /Visible controls/ })).toBeVisible();
     const row = panel.locator('.element-list li').filter({ has: panel.locator('.element-name', { hasText: 'Normal website action' }) });
     await row.getByRole('button', { name: /^Highlight/ }).click(); await expect(page.locator('#clickpilot-overlay')).toHaveCount(1);
-    await panel.getByRole('button', { name: 'Resume text assistant' }).click();
+    await textAction(panel, 'text-enable');
     await compose(page); await expect(page.locator('#clickpilot-overlay')).toHaveCount(0);
     await expect(page.getByLabel('Question about this passage')).toBeVisible();
     await panel.getByRole('button', { name: 'Inspect this page' }).click(); await expect(page.locator('#clickpilot-text')).toHaveCount(0);
@@ -239,13 +238,14 @@ test('switching from a pending Mock task to Manual cancels old work on the share
   const { context, page, panel } = await setup();
   try {
     await page.goto('http://127.0.0.1:4173/guidance.html');
+    await selectMode(panel, 'Mock guidance');
     await panel.getByLabel('What do you want to find?').fill('find primary target');
     await panel.getByRole('heading', { name: 'Find your next click.' }).click();
     await panel.getByText('Mock test scenarios', { exact: true }).click();
     await panel.getByLabel('Behavior for the next submitted task').selectOption('delayed');
     await panel.getByRole('button', { name: 'Start mock guidance' }).click();
     await expect(panel.getByRole('status')).toContainText('Choosing a target');
-    await panel.getByRole('button', { name: 'Manual highlights', exact: true }).click();
+    await selectMode(panel, 'Manual highlights');
     await page.waitForTimeout(2200); await expect(page.locator('#clickpilot-overlay')).toHaveCount(0);
     await panel.getByRole('button', { name: 'Inspect this page' }).click();
     await expect(panel.getByRole('heading', { name: /Visible controls/ })).toBeVisible();
