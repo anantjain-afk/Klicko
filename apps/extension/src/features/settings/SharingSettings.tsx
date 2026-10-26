@@ -44,13 +44,12 @@ export function SharingOnboarding({ sharing }: { sharing: Sharing }) {
 
 export function SharingSettings({ sharing }: { sharing: Sharing }) {
   const { guidance, selectedText } = sharing.preferences;
-  return <details className="sharing-settings" id="sharing-settings">
-    <summary>Settings</summary>
+  return <section className="sharing-settings" id="sharing-settings" aria-label="AI sharing">
     <SharingChoices guidance={guidance} selectedText={selectedText} disabled={!sharing.ready || sharing.saving}
       onChange={(key, value) => { void sharing.save({ [key]: value }); }} />
     <PrivacyNote />
     <p className="sharing-note">Turning a choice off stops that assistance. A request already sent may have reached Google.</p>
     {sharing.error && <div role="alert"><p>{sharing.error}</p><button type="button" className="text-button" disabled={sharing.saving}
       onClick={() => { void sharing.save({}); }}>Retry saving choices</button></div>}
-  </details>;
+  </section>;
 }

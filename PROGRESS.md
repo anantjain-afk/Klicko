@@ -4,7 +4,9 @@ Updated: 25 October 2026.
 
 ## Current status
 
-UX-1: **AWAITING USER VERIFICATION**, 25 October 2026. Approved reliability/onboarding scope implemented. Final typecheck/lint/build passed; **92 API + 119 extension unit tests** and **131/131 Chromium tests** passed. The UX-1 entry at the end records the root cause, changes, exact checks, visual evidence, limitations and numbered Chrome steps. UX-2 has not begun and requires separate approval after UX-1 verification.
+UX-2: **AWAITING USER VERIFICATION**, 25 October 2026. The minimal chat UI is implemented. The user explicitly requested manual verification and no tests; no unit/browser tests were added or run. Typecheck, lint, build, local empty-state visual previews and actual limitations are recorded in the UX-2 entry below.
+
+UX-1: **VERIFIED by the user**, 25 October 2026. Approved reliability/onboarding scope implemented. Final typecheck/lint/build passed; **92 API + 119 extension unit tests** and **131/131 Chromium tests** passed. The UX-1 entry at the end records the root cause, changes, exact checks, visual evidence, limitations and numbered Chrome steps. The user confirmed UX-1 verification and approved the minimal UX-2 chat redesign; its current evidence is recorded in the UX-2 entry below.
 
 Milestone 7A: **VERIFIED by the user**, 25 October 2026. Approved scope implemented, including strict distinct explanation/message variants and retained detailed panel replies when floating geometry is unavailable. Final checks: typecheck/lint/build passed; 92 API + 113 extension unit tests; 128/128 Chromium tests including the complete existing 6A/6B suite. Actual evidence and numbered Chrome checks are recorded below.
 
@@ -696,7 +698,7 @@ The user requested: “ok, good commit these changes and push the milestone-7A�
 
 ## UX-1 — Reliability, onboarding and clear messaging — 25 October 2026
 
-Status: **AWAITING USER VERIFICATION**. The user approved the reviewed UX-1 plan with “ok approved”. Work is limited to UX-1; the chat-first UX-2 redesign has not begun. No commit, push, deployment or publication was performed. Existing local PLAN.md/PROGRESS.md edits were preserved.
+Status: **VERIFIED by the user**, 25 October 2026. The user explicitly confirmed “ux-1 is verified” and approved UX-2. The user approved the reviewed UX-1 plan with “ok approved”. This record covers UX-1; the minimal UX-2 redesign was subsequently approved by the user. No commit, push, deployment or publication was performed. Existing local PLAN.md/PROGRESS.md edits were preserved.
 
 ### Root cause and implementation
 
@@ -752,4 +754,47 @@ Logs: `/tmp/clickpilot-ux1-typecheck.log`, `/tmp/clickpilot-ux1-lint.log`, `/tmp
 - Interrupted guidance pauses for explicit Continue with fresh context instead of replaying a request. Pending selected-text requests are cancelled and require reselecting; they are not silently retried. Draft restoration requires the same live panel session, page and valid visible range; geometry/visibility/navigation changes can discard it safely. Browser/extension restart clears session activation metadata, not saved AI preferences.
 - Storage failure is visible and fails closed for new grants. A failed revocation save keeps sharing off in that panel and asks the user to retry saving before closure; it cannot pretend the stored preference changed. Existing filtering, top-level DOM, local-only backend, cancellation/quota and single-owner recovery limits remain.
 
-**STOP: AWAITING USER VERIFICATION.** Do not begin UX-2, commit, push, deploy or publish without the required explicit authorization.
+**STOP: VERIFIED.** UX-2 was subsequently approved with a manual-verification-only testing instruction. No commit, push, deployment or publication is authorized.
+
+## UX-2 — Minimal chat sidebar — 25 October 2026
+
+Status: **AWAITING USER VERIFICATION**. The user confirmed UX-1 verification and approved UX-2, asking to keep only a very minimal chat-like interface. Their subsequent instruction, “just fix the ui , i will check manually no need for any tests”, overrides the usual automated-test gate for this milestone. No unit or browser tests were added or run. Existing uncommitted UX-1 implementation and documentation were preserved. No commit, push, deployment or publication was performed.
+
+### UI changes
+
+- The default panel opens directly to the existing AI assistant, with a small ClickPilot header, one More options button, a quiet empty state, conversation messages and a bottom composer. Ordinary use has no mode tabs, developer badges, large disclosure blocks or separate text-assistant card. The composer supports Enter to send, Shift+Enter for a line break and IME composition; its input retains the existing 240-character limit.
+- User questions and validated assistant results appear in one transcript. Selected-text questions/detailed explanations use the same transcript while keeping the existing selection bubble flow. History lives only in the panel document and is never written to storage, attached to API requests or used to reconstruct lost tasks. Strings render literally through React text children. A small useConversation hook separates display history from layout and delegates all requests to the existing controllers.
+- Contextual Stop, Retry, Continue and Done controls appear when needed. Retry can reuse the last explicitly submitted question when the original run has ended. Existing cancellation, outcome confirmation, navigation recovery, consent and stale-result guards remain in the controllers. New chat explicitly stops active assistance and clears the local transcript/draft.
+- Settings, Text selection and Developer tools live behind More options. Settings edits the same UX-1 preferences; Text selection enables/stops the existing selection assistant. Developer tools preserves Manual Highlights, element lists and Mock guidance/scenarios. The ManualInspection component was moved unchanged from main.tsx into its own UI file, with only import-path/export changes. The old standalone TextAssistant presentation was replaced by the shared transcript and secondary controls; its controller/selection/bubble logic remains intact.
+- Visiting Settings does not unmount the conversation or recreate the guidance connection. Messages and the composer draft remain available on return. Starting a Manual/Mock tool still ends active guidance; returning to chat stops that local tool. Auto-scroll follows new content when already near the bottom and allows reading older messages without being pulled down.
+- Replaced the accumulated panel stylesheet with simple layout rules for the header, scrollable conversation, bottom composer and secondary views, retaining styles for local developer tools and onboarding. Kept the existing green identity, native controls, visible keyboard focus, literal messages, narrow-panel wrapping and reduced-motion support. No images, animation library, component/state framework, dependency, permission, backend or API contract was added.
+
+### Actual checks and visual evidence
+
+| Exact command/check | Result |
+|---|---|
+| `corepack pnpm typecheck` | Exit 0; shared/API/extension |
+| `corepack pnpm lint` | Exit 0 |
+| `WRANGLER_LOG_PATH=/tmp/clickpilot-ux2-wrangler.log corepack pnpm build` | Exit 0; Chrome production build and API Worker **dry-run** only |
+| `git diff --check` | Exit 0 after final documentation |
+| `node /tmp/clickpilot-ux2-preview.cjs` | Exit 0; two local empty-chat captures using the existing Playwright library in an isolated Chromium profile. No test runner, assertions, message submission, fixture workflow or AI requests. HTTP(S) traffic blocked in the preview profile. |
+| Unit/browser tests | **NOT RUN**, explicitly requested by the user; no new tests |
+
+Viewed the empty chat at 360×760 and 260×650: readable header and empty state, no clipping, and the composer at the bottom. An initial capture taken immediately after viewport resize was incomplete; recaptured using fresh pages after font/layout frames settled, then viewed both final files. Evidence: `/tmp/clickpilot-ux2-chat-360.png`, `/tmp/clickpilot-ux2-chat-260.png`. The final small Settings sentence clarifies session-only message lifetime; the empty-chat captures remain representative. These are visual previews of the extension page in a tab, not actual Chrome side-panel workflow verification.
+
+Logs: `/tmp/clickpilot-ux2-typecheck.log`, `/tmp/clickpilot-ux2-lint.log`, `/tmp/clickpilot-ux2-build.log`. Loadable output: `apps/extension/.output/chrome-mv3`. No live Gemini or real-site workflow was exercised by the agent.
+
+### Manual Chrome verification
+
+1. Run the existing configured local backend (`corepack pnpm dev:api`) and fixture server (`python3 -m http.server 4173 --directory tests/fixtures`) if needed. Reload the unpacked extension from `apps/extension/.output/chrome-mv3` in chrome://extensions. Activate it on an ordinary fixture page. Expect only branding/menu, a simple welcome and bottom composer; no mode tabs, raw controls or repeated consent prompts. Resize the side panel: expect readable content, no horizontal overflow and a bottom composer.
+2. Enable Webpage guidance through More options → Settings if it is off, then Back to chat. Ask a synthetic page question and a guidance task. Expect your questions and replies as messages, a cleared composer after sending, and only relevant task controls. Try Enter, Shift+Enter and keyboard focus. Follow a multi-step highlight yourself, then Stop/Retry/Continue/Done as applicable. Expect the existing behavior with no automatic website actions and no late response after Stop/replacement. Check page/panel/worker consoles for unexpected errors.
+3. Type an unsent draft, visit Settings, then Back to chat. Expect both draft and prior messages retained. Repeat with a response arriving while Settings is open, and after a worker interruption using the verified UX-1 procedure. Scroll up in a longer conversation: new content must not force you down while reading. Use New chat: expect cleared messages/input and cancelled active work. Destroy/reload the panel document: expect no restored transcript or goal, while sharing preferences remain saved.
+4. Through More options → Text selection, enable the existing selection assistant. On text.html select a public passage and ask beside it. Return to chat: expect its question and detailed explanation in the transcript, with selected-text context identified on the question. Try cancellation and consent revocation separately; expect no late answer or extra uploads. The sidebar composer still asks about the page; selected-passage questions use the existing floating composer.
+5. Through More options → Developer tools, choose Manual Highlights and Mock guidance in separate runs. Expect the existing control inspection/highlights and local mock scenarios. Back to chat must end local tooling and retain prior conversation messages. Recheck missing targets, navigation, tab changes, genuine reactivation, saved consent and worker recovery in actual Chrome. Lost drafts/messages during view changes, clipped controls, incorrect requests, stale decoration or unexpected website actions fail verification.
+
+### Limits and stop gate
+
+- Functional and real Chrome side-panel verification is intentionally left to the user. Typecheck/lint/build and empty-state previews do not establish guidance, selection, cancellation or menu workflow correctness. Existing automated browser specs still target the prior panel controls and were not updated/executed under the user’s UI-only instruction; historical UX-1 results do not verify UX-2.
+- Display history is temporary. It is not model conversation memory and is lost when its panel document is destroyed. A selected passage is still submitted via the existing on-page composer, with its independent consent; the sidebar does not silently attach it to ordinary messages.
+
+**STOP: AWAITING USER VERIFICATION.** Fix UX-2 only if verification fails. Do not start another milestone, commit, push, deploy or publish without explicit authorization.

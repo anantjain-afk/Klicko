@@ -1,73 +1,109 @@
-import { useRef, useState, type FormEvent } from 'react';
-import type { GuidanceState } from './session';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { useGuidanceSession } from './useGuidanceSession';
+import { useConversation } from './useConversation';
 
-function replyText(state: GuidanceState, connected: boolean): string {
+type Session = ReturnType<typeof useGuidanceSession>;
+
+function guidanceStatus({ state, connected }: Session): string {
   switch (state.kind) {
-    case 'idle': return 'Ask a question about the controls on this page.';
-    case 'observing': return state.attempt ? 'Checking the page again…' : 'Checking this page…';
+    case 'idle': case 'answer': case 'clarification': case 'unsupported': return '';
+    case 'observing': return 'Checking this page…';
     case 'selecting': return 'Thinking…';
     case 'highlighting': return 'Finding the right control…';
-    case 'connection_paused': return connected ? 'You’re connected again. Continue your task when you’re ready.' : 'ClickPilot is reconnecting. Your goal is still here.';
-    case 'waiting': return `Step ${state.stepNumber}: ${state.message} Waiting for you to act.${state.nextStep === 'none' ? ' This is the final suggestion; no automatic next step.' : ' I will observe the page before suggesting the next step.'}${state.previousStatus ? ` Previous step: ${state.previousStatus === 'verified' ? 'outcome verified' : state.previousStatus === 'user_confirmed' ? 'confirmed by you' : 'unverified'}.` : ''}`;
+    case 'verifying': return 'Checking your step…';
+    case 'waiting': return `Step ${state.stepNumber ?? 1} · Waiting for you`;
+    case 'connection_paused': return connected ? 'Connected again. Continue when you’re ready.' : 'Reconnecting… Your goal is still here.';
+    case 'stopped': return 'Stopped.';
     default: return state.message;
   }
 }
 
-export function AssistantPanel({ session }: { session: ReturnType<typeof useGuidanceSession> }) {
-  const { state, connected, controller, restartNotice, storageAvailable } = session;
+export function AssistantPanel({ session, live, visible, onSettings }: {
+  session: Session; live: boolean; visible: boolean; onSettings: () => void;
+}) {
   const [question, setQuestion] = useState('');
-  const consent = session.guidanceConsent;
-  const submitted = useRef('');
+  const { messages, source, addQuestion } = useConversation(session, live);
+  const scrollArea = useRef<HTMLDivElement>(null);
+  const followLatest = useRef(true);
+  const lastQuestion = useRef('');
+  const { state, textState, controller, textController, connected, guidanceConsent } = session;
+  const isText = source === 'text';
+  const textActive = isText && ['selected', 'composing', 'requesting', 'answered', 'error'].includes(textState.kind);
   const busy = ['observing', 'selecting', 'highlighting', 'verifying', 'navigating'].includes(state.kind);
-  const active = controller.current?.isActive() ?? false;
+  const continuing = 'canContinue' in state && state.canContinue && controller.current?.isActive();
+  const canStop = isText ? ['selected', 'composing', 'requesting', 'error'].includes(textState.kind)
+    : busy || ['waiting', 'recovery', 'paused', 'connection_paused', 'clicked'].includes(state.kind);
+  const canRetry = isText ? textState.kind === 'error' && textState.canRetry
+    : state.kind === 'error' || state.kind === 'recovery';
+  const canComplete = !isText && ['waiting', 'recovery', 'clicked'].includes(state.kind);
+  const status = isText ? (textState.kind === 'answered' ? '' : textState.message) : guidanceStatus(session);
+  const showStatus = !!status && (messages.length > 0 || textActive);
+  const isError = isText ? textState.kind === 'error' : state.kind === 'error';
+
+  useEffect(() => {
+    if (visible && followLatest.current && scrollArea.current) scrollArea.current.scrollTop = scrollArea.current.scrollHeight;
+  }, [messages, status, visible]);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!consent || !connected) return;
-    submitted.current = question.trim();
-    void controller.current?.start(submitted.current);
+    const value = question.trim();
+    if (!value || !guidanceConsent || !connected || !live) return;
+    followLatest.current = true;
+    lastQuestion.current = value;
+    addQuestion(value); setQuestion('');
+    void controller.current?.start(value);
   }
 
-  return <>
-    <section className="welcome guidance-welcome" aria-labelledby="assistant-title">
-      <h1 id="assistant-title">Ask about this page.</h1>
-      <p>Get an answer or guided steps toward your goal. You make every click. A new question starts a new task.</p>
-    </section>
-    <details className="mock-examples">
-      <summary>What is sent to Gemini?</summary>
-      <p>Your original goal, site origin, fresh filtered control labels, step number and a short last-action status are sent through your local backend to Google. Continuing guidance can send another request after you act. Task context is temporary and clears on Stop. No screenshots, input values or conversation history are sent.</p>
-      <p>Filtering is limited. Use public pages and avoid personal information. Google’s data handling depends on your API service tier; unpaid usage may be used to improve products.</p>
-    </details>
-    <form className="guidance-form" onSubmit={submit}>
-      <label htmlFor="assistant-question">What would you like help with?</label>
-      <textarea id="assistant-question" rows={3} required maxLength={240} value={question}
-        placeholder="Where can I open my profile?" onChange={(event) => setQuestion(event.target.value)} />
-      {!consent && <p className="sharing-note">Webpage sharing is off. Turn it on in Settings to ask about this page.</p>}
-      <button type="submit" className="primary-button" disabled={!consent || !question.trim() || !connected}>
-        {active ? 'Send new question' : 'Ask Gemini'}
-      </button>
-    </form>
-    <section className="guidance-progress" aria-label="Assistant reply">
-      {restartNotice && <p>Previous task interrupted — enter your goal to restart.</p>}
-      {!storageAvailable && <p>ClickPilot couldn’t save a restart reminder. Keep this panel open to retain your goal.</p>}
-      {submitted.current && <p className="assistant-question">You asked: {submitted.current}</p>}
-      {state.kind === 'connection_paused' && session.retainedReply && <p className="guidance-state">{replyText(session.retainedReply, connected)}</p>}
-      <p className="guidance-state" role={state.kind === 'error' ? 'alert' : 'status'} aria-live="polite">{replyText(state, connected)}</p>
-      <div className="guidance-actions">
-        <button className="text-button" disabled={!active && !busy && !restartNotice} onClick={() => { session.textController.current?.stop(); submitted.current = ''; controller.current?.stop(); }}>Stop</button>
-        <button className="text-button" disabled={!submitted.current || busy || !consent || !connected} onClick={() => {
-          if (active && 'canContinue' in state && state.canContinue && state.kind !== 'recovery') void controller.current?.continueTask();
-          else if (active) void controller.current?.retry();
-          else void controller.current?.start(question.trim());
-        }}>Retry</button>
-        {active && 'canContinue' in state && state.canContinue && state.kind !== 'recovery' && <button className="text-button" disabled={!consent || !connected}
-          onClick={() => { void controller.current?.continueTask(); }}>Continue task on this page</button>}
-        {state.kind === 'recovery' && state.canContinue && <button className="text-button" disabled={!consent || !connected}
-          onClick={() => { void controller.current?.continueManually(); }}>Continue manually</button>}
-        {(state.kind === 'waiting' || state.kind === 'recovery' || state.kind === 'clicked') && <button className="text-button"
-          onClick={() => { submitted.current = ''; controller.current?.confirmComplete(); }}>Confirm task complete</button>}
+  return <section className="chat-workspace" aria-label="Ask ClickPilot">
+    <div className="conversation" ref={scrollArea} onScroll={() => {
+      const element = scrollArea.current;
+      if (element) followLatest.current = element.scrollHeight - element.scrollTop - element.clientHeight < 60;
+    }}>
+      {messages.length === 0 && !textActive && <div className="chat-empty">
+        <h1>What can I help<br />you with?</h1>
+        <p>Ask about this page.<br />I’ll help you find your way.</p>
+      </div>}
+      <div className="chat-messages" role="log" aria-label="Conversation" aria-live="polite" aria-relevant="additions">
+        {messages.map((message) => <div className={`chat-message ${message.role}`} key={message.id}>
+          <span className="visually-hidden">{message.role === 'user' ? 'You' : 'ClickPilot'}: </span>
+          {message.source === 'text' && message.role === 'user' && <span className="message-context">Selected text</span>}
+          <p>{message.text}</p>
+        </div>)}
       </div>
-    </section>
-  </>;
+      {session.restartNotice && <p className="chat-notice">Previous task interrupted — enter your goal to restart.</p>}
+      {!session.storageAvailable && <p className="chat-notice">Keep this panel open. ClickPilot couldn’t save a restart reminder.</p>}
+    </div>
+
+    <div className="chat-bottom">
+      {showStatus && <p className={`chat-status${isError ? ' error' : ''}`} role={isError ? 'alert' : 'status'}>{status}</p>}
+      {!connected && <p className="chat-status" aria-live="polite">Reconnecting… <button className="text-button" onClick={session.reconnect}>Reconnect</button></p>}
+      {(canStop || canRetry || continuing || canComplete) && <div className="chat-actions">
+        {canStop && <button className="text-button" onClick={() => { textController.current?.stop(); controller.current?.stop(); }}>Stop</button>}
+        {canRetry && <button className="text-button" disabled={!connected || !(isText ? session.textConsent : guidanceConsent)} onClick={() => {
+          if (isText) textController.current?.retry();
+          else if (controller.current?.isActive()) void controller.current.retry();
+          else if (lastQuestion.current) void controller.current?.start(lastQuestion.current);
+        }}>Retry</button>}
+        {!isText && continuing && <button className="text-button" disabled={!guidanceConsent || !connected} onClick={() => {
+          if (state.kind === 'recovery') void controller.current?.continueManually(); else void controller.current?.continueTask();
+        }}>Continue</button>}
+        {canComplete && <button className="text-button" onClick={() => controller.current?.confirmComplete()}>Done</button>}
+      </div>}
+      <form className="chat-composer" onSubmit={submit}>
+        <label htmlFor="assistant-question" className="visually-hidden">What would you like help with?</label>
+        <textarea id="assistant-question" rows={2} required maxLength={240} value={question}
+          placeholder="Ask ClickPilot…" onChange={(event) => setQuestion(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+              event.preventDefault(); event.currentTarget.form?.requestSubmit();
+            }
+          }} />
+        <button type="submit" className="send-button" aria-label="Send message" disabled={!question.trim() || !guidanceConsent || !connected || !live}>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6" /></svg>
+        </button>
+      </form>
+      {!guidanceConsent ? <p className="composer-note">Webpage sharing is off. <button className="text-button" onClick={onSettings}>Settings</button></p>
+        : <p className="composer-note">You make every click.</p>}
+    </div>
+  </section>;
 }

@@ -1,6 +1,6 @@
 # ClickPilot implementation plan
 
-Current work: UX-1 approved; implementation and evidence are recorded in the final section below. Earlier milestone gates are historical.
+Current work: UX-1 is VERIFIED by the user; UX-2 is approved for a minimal chat UI. Earlier milestone gates are historical.
 
 Status update — 25 October 2026: the user confirmed milestone 6B is complete and approved scoped 7A implementation with the strict result union and retained side-panel explanation. The 7A branch was based on 6A; it has been fast-forwarded to existing 6B commit `109e04f` without creating a commit. Historical milestone records below are retained.
 
@@ -417,3 +417,13 @@ Approved by the user on 25 October 2026 with “ok approved”, following the re
 No dependency, permission, backend protocol, screenshot, buddy, voice, persistent conversation-history or deployment change is included. Existing DOM extraction, action observation, overlay rendering and checkpoint semantics remain in place.
 
 UX-2 remains planned: a chat-first panel with session-only messages, a bottom composer, unified existing guidance/text presentation, Settings and a secondary Developer view. It has not been implemented.
+
+## UX-2 — Minimal chat sidebar
+
+Approved on 25 October 2026: “ux-1 is verified , start ux-2” with the explicit direction to keep only a very minimal chat interface. The user then confirmed: “just fix the ui , i will check manually no need for any tests”. This overrides automated unit/browser-test requirements for this milestone; typecheck, lint and a fresh build still prepare a loadable extension.
+
+Scope: default to the existing AI assistant, with a small branded header/menu, one conversation and a bottom composer. Keep messages/draft in the panel’s memory across Settings/Developer views. Render literal text, keep history out of API requests/storage, and show only relevant Stop/Retry/Continue/Done controls. Put Settings, text-selection controls and existing Manual/Mock tools behind the menu. Preserve consent, permissions, backend contracts and the current guidance/text-selection controllers. No dependencies or new capabilities.
+
+Files: side-panel main/style, AssistantPanel and a small conversation presentation hook, existing Settings presentation, and ManualInspection moved unchanged into its own UI module. Selected-text results join the conversation instead of a separate always-visible section.
+
+Acceptance: ordinary use opens directly to a minimal chat; messages and input survive visiting Settings; consent and all existing assistance remain reachable; narrow panels scroll the conversation while the composer stays at the bottom. User performs Chrome workflow/visual verification. Record actual checks and any limitations in PROGRESS.md, mark AWAITING USER VERIFICATION and stop.
