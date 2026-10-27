@@ -201,3 +201,11 @@ The side panel now opens directly to chat: type in the bottom composer and press
 The top-right More options menu contains New chat, Settings, Text selection and Developer tools. Settings holds the remembered sharing choices. Text selection enables/resumes the existing selection assistant. Manual Highlights and Mock guidance live in Developer tools; starting a tool ends active guidance. Back to chat keeps the conversation and draft. New chat stops active assistance and clears that panel’s messages.
 
 Messages exist only in the live panel document and are never added to model requests or storage. A new question still starts a separate task using the existing minimized context; visible history does not create AI memory. UX-2 awaits manual Chrome verification. At the user’s request no automated tests were added or run for the UI redesign.
+
+### Animated companion
+
+The approved yellow/graphite Rive robot is integrated into the floating buddy and sidebar, with cursor attention, curious typing reactions, task expressions and Motion movement. The sidebar robot peeks over the workspace edge. Integration awaits manual Chrome verification; existing task/consent behavior remains in place.
+
+Build with `corepack pnpm --filter @clickpilot/extension build`, then reload `apps/extension/.output/chrome-mv3` in Chrome. See [companion animation](docs/companion-animation.md) for asset preparation, runtime boundaries, editing, checks and limitations. The standalone [character playground](prototypes/robot-playground/README.md) remains available for visual iteration.
+
+Interaction sounds use the supplied local WAV files, including separate `boing-1` normal replies and `boing-2` selected-text replies. A small offscreen audio page handles launch/close playback reliably at 50% volume. See [sound mappings and implementation](docs/interaction-sounds.md).

@@ -6,8 +6,15 @@ export default defineConfig({
   manifest: {
     name: 'ClickPilot',
     description: 'Visual guidance for websites, one user action at a time.',
-    permissions: ['activeTab', 'scripting', 'storage'],
+    permissions: ['activeTab', 'scripting', 'storage', 'offscreen'],
     host_permissions: ['http://127.0.0.1:8787/*'],
+    content_security_policy: {
+      extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';",
+    },
+    web_accessible_resources: [{
+      resources: ['robot.html'],
+      matches: ['http://*/*', 'https://*/*'],
+    }],
     action: {
       default_title: 'Open ClickPilot',
     },

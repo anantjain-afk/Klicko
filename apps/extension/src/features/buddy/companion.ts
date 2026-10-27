@@ -1,7 +1,7 @@
 import type { GuidanceState } from '../session/session';
 import type { TextState } from '../text-assistant/session';
 
-export type CompanionMood = 'idle' | 'noticed' | 'composing' | 'thinking' | 'answering' | 'guiding' | 'paused' | 'error';
+export type CompanionMood = 'idle' | 'noticed' | 'composing' | 'thinking' | 'answering' | 'guiding' | 'paused' | 'error' | 'confused';
 
 export function companionMood(state: GuidanceState, textState: TextState, source: 'guidance' | 'text', connected: boolean): CompanionMood {
   if (!connected) return 'paused';
@@ -18,36 +18,37 @@ export function companionMood(state: GuidanceState, textState: TextState, source
   switch (state.kind) {
     case 'observing': case 'selecting': case 'highlighting': case 'verifying': case 'navigating': return 'thinking';
     case 'waiting': case 'clicked': return 'guiding';
-    case 'answer': case 'clarification': case 'confirmed': return 'answering';
+    case 'answer': case 'confirmed': return 'answering';
+    case 'clarification': return 'confused';
     case 'paused': case 'recovery': case 'connection_paused': case 'stopped': return 'paused';
     case 'error': case 'unsupported': return 'error';
     default: return 'idle';
   }
 }
 
-// Entirely authored artwork. Page text and model output never enter this markup.
+// Static poster of the approved character: fast startup, message avatars and runtime fallback.
 export function createCompanion() {
-  const document = new DOMParser().parseFromString(`<svg xmlns="http://www.w3.org/2000/svg" class="companion" viewBox="0 0 80 84" aria-hidden="true" focusable="false">
-    <ellipse cx="40" cy="78" rx="22" ry="3" fill="#243128" opacity=".14"/>
-    <path d="M25 68h11v9H23q-3 0-2-3zM44 68h11l4 6q1 3-2 3H44z" fill="#34443b" stroke="#20362b" stroke-width="1.5"/>
-    <path d="M25 52q15-7 30 0l4 17q-18 8-38 0z" fill="#41674c" stroke="#244531" stroke-width="1.6"/>
-    <path d="M29 55q11-4 22 0l3 12q-14 5-28 0z" fill="#eee9d9" stroke="#c4c3ad" stroke-width="1"/>
-    <path d="M33 61h8" stroke="#a6ac97" stroke-width="2" stroke-linecap="round"/>
-    <circle cx="48" cy="63" r="2" fill="#b49b68"/>
-    <path d="M35 44h10v10H35z" fill="#a89060" stroke="#766542" stroke-width="1.5"/>
-    <circle cx="40" cy="49" r="2.5" fill="#d4c292"/>
-    <g class="companion-head">
-      <path d="M11 15q0-7 8-8l41 1q9 1 9 9l-2 23q-1 7-9 8l-38-1q-8-1-9-8z" fill="#315c43" stroke="#244531" stroke-width="1.8"/>
-      <path d="M18 11q17-3 31 0" fill="none" stroke="#789373" stroke-width="1.5" stroke-linecap="round"/>
-      <path d="m54 8 7 1q7 1 7 8l-1 7-11-2z" fill="#e6e1cb" stroke="#c7c4ac" stroke-width="1"/>
-      <path d="m59 13 4 1" stroke="#9f9e86" stroke-width="1.2" stroke-linecap="round"/>
-      <path d="M17 22q0-5 6-5h34q6 0 6 6l-1 13q0 6-6 6H24q-6 0-6-6z" fill="#172c24" stroke="#102119" stroke-width="1.5"/>
-      <path d="M23 20h23" stroke="#446052" stroke-width="1.2" stroke-linecap="round"/>
-      <g class="companion-eyes">
-        <g class="companion-eye companion-eye-left"><rect x="24" y="23" width="12" height="14" rx="5.5" fill="#f7f0da"/><rect class="companion-pupil" x="28" y="27" width="5" height="8" rx="2.5" fill="#244735"/><circle cx="31" cy="28" r="1" fill="#fffefa"/></g>
-        <g class="companion-eye companion-eye-right"><rect x="45" y="22" width="12" height="15" rx="5.5" fill="#f7f0da"/><rect class="companion-pupil" x="48" y="26" width="5" height="8" rx="2.5" fill="#244735"/><circle cx="51" cy="27" r="1" fill="#fffefa"/></g>
-      </g>
-      <circle cx="19" cy="43" r="1.4" fill="#b49b68"/>
+  const document = new DOMParser().parseFromString(`<svg xmlns="http://www.w3.org/2000/svg" class="companion" viewBox="0 0 400 360" aria-hidden="true" focusable="false">
+    <g fill="#364442"><rect x="153" y="315" width="37" height="14" rx="6"/><rect x="210" y="315" width="37" height="14" rx="6"/><rect x="188" y="231" width="24" height="28" rx="6"/></g>
+    <rect x="147" y="242" width="106" height="76" rx="30" fill="#ddb055" stroke="#a67b35" stroke-width="2"/>
+    <rect x="162" y="264" width="76" height="40" rx="14" fill="#f4ecd1"/>
+    <path d="M176 281h27m-27 7h27" stroke="#b2aa8c" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="226" cy="284" r="3" fill="#8ca583"/>
+    <g fill="#edc064" stroke="#ad853b" stroke-width="2"><rect x="129" y="255" width="30" height="25" rx="10"/><rect x="241" y="255" width="30" height="25" rx="10"/></g>
+    <g transform="rotate(-2 200 216)">
+      <g fill="#364442"><rect x="58" y="155" width="20" height="54" rx="9"/><rect x="322" y="155" width="20" height="54" rx="9"/></g>
+      <rect x="73" y="101" width="254" height="162" rx="49" fill="#b78939"/>
+      <rect x="74" y="96" width="252" height="156" rx="49" fill="#edc15e" stroke="#ab7b31" stroke-width="2"/>
+      <path d="M121 107h110" stroke="#ffdf83" stroke-width="3" stroke-linecap="round"/>
+      <rect x="269" y="111" width="32" height="12" rx="4" fill="#f6e5b6"/>
+      <g fill="#394542" stroke="#202c2d" stroke-width="2"><rect x="103" y="120" width="88" height="104" rx="35"/><rect x="209" y="120" width="88" height="104" rx="35"/></g>
+      <g fill="#101b20"><rect x="110" y="129" width="74" height="89" rx="31"/><rect x="216" y="129" width="74" height="89" rx="31"/></g>
+      <g fill="#f6efd6"><rect x="118" y="139" width="58" height="70" rx="25"/><rect x="224" y="139" width="58" height="70" rx="25"/></g>
+      <g fill="#b7c6b6"><rect x="128.5" y="150" width="37" height="48" rx="17"/><rect x="234.5" y="150" width="37" height="48" rx="17"/></g>
+      <g fill="#233033"><rect x="133.5" y="154" width="27" height="38" rx="12"/><rect x="239.5" y="154" width="27" height="38" rx="12"/></g>
+      <g fill="#fffae9"><ellipse cx="142" cy="165" rx="4.5" ry="5.5"/><ellipse cx="248" cy="165" rx="4.5" ry="5.5"/></g>
+      <g fill="#73807a"><rect x="132" y="216" width="31" height="3" rx="1.5"/><rect x="238" y="216" width="31" height="3" rx="1.5"/></g>
+      <g fill="#b48534"><circle cx="89" cy="177" r="3.5"/><circle cx="311" cy="177" r="3.5"/></g>
     </g>
   </svg>`, 'image/svg+xml');
   return document.documentElement;

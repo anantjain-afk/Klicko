@@ -3,6 +3,7 @@ import type { useGuidanceSession } from './useGuidanceSession';
 import { useConversation } from './useConversation';
 import { Companion } from '../buddy/CompanionAvatar';
 import { companionMood } from '../buddy/companion';
+import { playSound } from '../../lib/sounds';
 
 type Session = ReturnType<typeof useGuidanceSession>;
 
@@ -52,6 +53,7 @@ export function AssistantPanel({ session, live, visible, onSettings }: {
     event.preventDefault();
     const value = question.trim();
     if (!value || !guidanceConsent || !connected || !live) return;
+    playSound('clicky-text-send');
     followLatest.current = true;
     lastQuestion.current = value;
     addQuestion(value); setQuestion('');
@@ -64,7 +66,6 @@ export function AssistantPanel({ session, live, visible, onSettings }: {
       if (element) followLatest.current = element.scrollHeight - element.scrollTop - element.clientHeight < 60;
     }}>
       {messages.length === 0 && !textActive && <div className="chat-empty">
-        <Companion mood={mood} className="welcome-companion" />
         <h1>A little help,<br />right here.</h1>
         <p>Ask about this page.<br />We’ll find the next step together.</p>
       </div>}

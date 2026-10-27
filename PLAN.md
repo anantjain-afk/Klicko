@@ -471,3 +471,19 @@ Reuse session/checkpoint/navigation/overlay/text regressions. Add roughly six gr
 Run corepack pnpm typecheck, corepack pnpm lint, corepack pnpm test, relevant Playwright cases, corepack pnpm build (Worker dry-run), and git diff --check. Exact final commands/results go in PROGRESS.md. Manually verify actual Chrome with the sidebar closed, buddy question/guidance, sidebar opening mid-request and closing mid-task, drag/keyboard/zoom/light-dark sites, natural worker sleep with DevTools detached, navigation/revocation and ordinary page controls. Finish at AWAITING USER VERIFICATION.
 
 Approval must explicitly cover the ownership migration and chosen recovery/privacy policy. No buddy, voice, screenshot, framework, new permission, deployment or UX-4 work is implemented by this plan.
+
+## Character prototype, stage 2 — expression review
+
+The user approved the original Rive character design and idle direction on 27 October 2026 with “yes , i approve character design and idle direction”. Continue the previously requested expression pass within `prototypes/robot-playground`: Listening, Thinking, Happy, Confused, Surprised, Sleepy and Error, plus automatic proximity/click/typing reactions. Preserve the approved silhouette/materials/idle, existing Motion movement and the live extension. No new dependencies or extension integration in this pass.
+
+Rive owns internal expressions through view-model-driven transitions; Motion owns positioning and UI transitions. Acceptance: eight accessible expression previews, working approach/click/typing reactions, interruption by another expression/context/reduced motion, clean pose resets, a stable reduced-motion pose and usable drag/keyboard controls. Validate with Rive compile/inspect/native captures, prototype typecheck/lint/build and local browser checks. No backend tests. Update PROGRESS and stop at AWAITING USER VERIFICATION; extension integration requires the next explicit approval.
+
+## Character integration, stage 3 — approved implementation
+
+On 27 October 2026 the user approved expressions/timing with “good , i approve the expressions and timinig continue”, authorizing extension integration. Stage 2's expression gate is complete. Integrate the approved character and Motion movement into the existing native buddy/ask card and React sidebar. Preserve task controllers, consent, messages, recovery and all user-only action guarantees. No new AI/voice/screenshot feature or browser permission.
+
+Package matching Rive/Motion runtimes locally, retain a static poster on asset failure, isolate the floating graphics renderer from website CSP, validate its private numeric-only graphics channel, and suspend/clean up animation. Keep native drag/keyboard controls, add spring/float/reaction movement, and show the character perched above the sidebar content. Chrome's outer side-panel frame remains browser-controlled. Run extension lint/typecheck/unit/build and focused browser workflows with local mocked responses; skip backend tests. Record exact results and known baseline limitations, supply Chrome verification steps and stop at AWAITING USER VERIFICATION.
+
+## Interaction audio — user-authorized addition
+
+On 27 October 2026 the user requested seven named local interaction clips, then added `boing-1` for normal replies and `boing-2` for selected-text answers. Add only those nine cues, with one reply cue per new shared assistant message and no replay for restored/shown history. Use a minimal local audio player; the need for Chrome's `offscreen` audio permission was explained before implementing it after cold-start autoplay was observed to fail in the character frame. Preserve existing consent/submission/task behavior. The user explicitly waived unit tests for this task; run frontend build/lint/typecheck and a local playback smoke check, record actual results and provide manual Chrome verification. No backend tests or new AI/voice feature.

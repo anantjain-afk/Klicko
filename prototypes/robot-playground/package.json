@@ -1,0 +1,26 @@
+{
+  "name": "clickpilot-robot-playground",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "character": "node scripts/build-character.mjs",
+    "check:browser": "node scripts/check-expressions.mjs",
+    "dev": "vite --host 127.0.0.1 --port 5176 --strictPort",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && vite build"
+  },
+  "dependencies": {
+    "@rive-app/canvas": "2.45.1",
+    "@rive-app/react-canvas": "4.37.1",
+    "motion": "14.6.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "typescript": "5.9.3",
+    "vite": "8.3.5"
+  }
+}

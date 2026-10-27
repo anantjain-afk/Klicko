@@ -4,14 +4,17 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "build": "wxt build -b chrome",
+    "build": "node scripts/prepare-companion.mjs && wxt build -b chrome",
     "test": "vitest run",
-    "typecheck": "wxt prepare && tsc --noEmit"
+    "typecheck": "node scripts/prepare-companion.mjs && wxt prepare && tsc --noEmit"
   },
   "dependencies": {
+    "@clickpilot/shared": "workspace:*",
+    "@rive-app/canvas": "2.45.1",
+    "@rive-app/react-canvas": "4.37.1",
+    "motion": "14.6.0",
     "react": "19.3.1",
-    "react-dom": "19.3.1",
-    "@clickpilot/shared": "workspace:*"
+    "react-dom": "19.3.1"
   },
   "devDependencies": {
     "@types/react": "19.3.0",

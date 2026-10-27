@@ -9,13 +9,12 @@ button { border: 0; border-radius: 8px; background: transparent; color: var(--gr
 .launcher { position: fixed; display: grid; place-items: center; width: var(--buddy-size); height: var(--buddy-size); padding: 0;
   border: 0; border-radius: 16px; background: transparent; pointer-events: auto; touch-action: none; user-select: none;
   filter: drop-shadow(0 3px 3px rgb(20 36 25 / 20%)); }
-.launcher .companion-avatar { width: 56px; height: 58px; }
+.launcher .companion-avatar { width: 80px; height: 72px; }
 .launcher:hover { filter: drop-shadow(0 4px 4px rgb(20 36 25 / 28%)); }
-.launcher[aria-expanded="true"] .companion-avatar { width: 64px; height: 68px; }
 .popup { position: fixed; width: min(304px, calc(100vw - 24px)); max-height: min(430px, calc(100dvh - 104px)); overflow: auto;
   padding: 18px; border-radius: 18px; color: var(--ink); background: var(--raised); box-shadow: var(--shadow);
   pointer-events: auto; font: 400 14px/1.6 var(--font); scrollbar-width: thin; scrollbar-color: var(--line) transparent;
-  animation: ask-open 180ms cubic-bezier(.16,1,.3,1); }
+}
 .heading, .actions { display: flex; align-items: center; gap: 12px; }
 .heading { justify-content: space-between; margin-bottom: 18px; }
 .name { font-size: 13px; font-weight: 650; letter-spacing: -.02em; }
@@ -44,5 +43,3 @@ textarea::placeholder { color: var(--muted); opacity: 1; }
 .reply-link:hover { text-decoration: underline; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 ::selection { background: var(--green); color: var(--button-ink); }
-@keyframes ask-open { from { opacity: .5; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-@media (prefers-reduced-motion: reduce) { .popup { animation: none; } }

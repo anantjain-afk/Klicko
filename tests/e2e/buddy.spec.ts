@@ -61,13 +61,19 @@ async function askBuddy(page: Page, question: string) {
   await cdp.send('DOM.focus', { nodeId: node.nodeId }); await cdp.detach();
   await page.keyboard.type(question); await page.keyboard.press('Enter');
 }
-async function setup(fixture = 'guidance.html', consent = true) {
+async function setup(fixture = 'guidance.html', consent = true, options: { strictCsp?: boolean; failCharacter?: boolean } = {}) {
   const extension = await launchExtension();
+  let blockedCharacterRequests = 0;
   await extension.context.route('http://127.0.0.1:8787/**', (route) => route.continue({ url: route.request().url().replace('127.0.0.1:8787', `127.0.0.1:${mockPort}`) }));
   await extension.worker.evaluate(async (enabled) => {
     const api = (globalThis as unknown as { chrome: { storage: { local: { set: (v: unknown) => Promise<void> } } } }).chrome;
     await api.storage.local.set({ 'clickpilot.ai-sharing': { version: 1, onboardingComplete: true, guidance: enabled, selectedText: enabled } });
   }, consent);
+  if (options.strictCsp) await extension.context.route('**/guidance.html', async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({ response, headers: { ...response.headers(), 'content-security-policy': "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'" } });
+  });
+  if (options.failCharacter) await extension.context.route('**/buddy/robot.riv', (route) => { blockedCharacterRequests++; return route.abort(); });
   const page = await extension.context.newPage(); await page.goto(`http://localhost:4173/${fixture}`);
   await activateToolbar(page, extension.extensionId);
   await expect(page.locator('#clickpilot-buddy')).toHaveCount(1);
@@ -75,7 +81,7 @@ async function setup(fixture = 'guidance.html', consent = true) {
   await expect.poll(async () => {
     const { cdp, node } = await buddyNode(page, 'Open sidebar'); await cdp.detach(); return attribute(node, 'disabled');
   }).toBeUndefined();
-  return { ...extension, page };
+  return { ...extension, page, blockedCharacterRequests: () => blockedCharacterRequests };
 }
 async function openPanel(page: Page, extensionId: string) {
   const context = page.context();
@@ -154,6 +160,7 @@ test('full navigation keeps one original-goal task; cross-origin and other tabs 
   try {
     mode = 'workflow'; await askBuddy(page, 'Guide me to Edit domain');
     await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Settings.');
+    await expect.poll(async () => (await buddyCharacter(page)).expression).toBe('Listening');
     await page.getByRole('link', { name: 'Settings', exact: true }).click();
     await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Domains.');
     await page.getByRole('link', { name: 'Domains', exact: true }).click();
@@ -199,5 +206,67 @@ test('selected-text assistance still explains through the shared sidebar without
     expect(requests).toHaveLength(1);
     expect(requests[0]).toMatchObject({ protocolVersion: 1, operation: 'explain_text' });
     expect(await recoveryRecords(panel)).toEqual({});
+  } finally { await context.close(); }
+});
+
+async function buddyCharacter(page: Page) {
+  const { cdp, node } = await buddyNode(page, 'clickpilot-companion');
+  await cdp.detach();
+  const robot = walk(node).find((child) => attribute(child, 'data-expression') !== undefined);
+  return { ready: robot && attribute(robot, 'data-ready'), expression: robot && attribute(robot, 'data-expression'),
+    poster: walk(node).some((child) => child.nodeName.toLowerCase() === 'svg') };
+}
+
+test('packaged Rive works on a strict-CSP page with attention, task expressions and reduced motion', async () => {
+  const { context, page, extensionId } = await setup('guidance.html', true, { strictCsp: true });
+  try {
+    await expect.poll(async () => (await buddyCharacter(page)).ready).toBe('true');
+    await expect.poll(async () => (await buddyCharacter(page)).expression).toBe('Idle');
+    const { cdp, node } = await buddyNode(page, 'Ask ClickPilot');
+    const { model } = await cdp.send('DOM.getBoxModel', { nodeId: node.nodeId }); await cdp.detach();
+    await page.mouse.move((model.border[0]! + model.border[4]!) / 2, (model.border[1]! + model.border[5]!) / 2);
+    await expect.poll(async () => (await buddyCharacter(page)).expression).toBe('Happy');
+    await page.mouse.move(10, 10);
+    await expect.poll(async () => (await buddyCharacter(page)).expression).toBe('Idle');
+    await clickBuddy(page, 'Ask ClickPilot');
+    await expect.poll(async () => (await buddyCharacter(page)).expression).toBe('Surprised');
+    await page.keyboard.type('Where are preferences?');
+    await expect.poll(async () => (await buddyCharacter(page)).expression).toBe('Listening');
+    expect(requests).toHaveLength(0);
+    await page.screenshot({ path: '/tmp/clickpilot-integrated-ask.png' });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await expect.poll(async () => (await buddyCharacter(page)).expression).toBe('Still');
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await expect.poll(async () => (await buddyCharacter(page)).expression).toBe('Listening');
+    mode = 'delayed'; await page.keyboard.press('Enter');
+    await expect.poll(() => requests.length).toBe(1);
+    await expect.poll(async () => (await buddyCharacter(page)).expression).toBe('Thinking');
+    await clickBuddy(page, 'Stop');
+    await expect.poll(async () => (await buddyCharacter(page)).expression).toBe('Sleepy');
+    release?.();
+    const panel = await openPanel(page, extensionId); await panel.bringToFront();
+    await expect(panel.locator('.sidebar-perch .robot-companion')).toHaveAttribute('data-ready', 'true');
+    await panel.getByLabel('What would you like help with?').fill('A new question');
+    await expect(panel.locator('.sidebar-perch .robot-companion')).toHaveAttribute('data-expression', 'Listening');
+    await panel.setViewportSize({ width: 360, height: 800 });
+    await panel.screenshot({ path: '/tmp/clickpilot-integrated-sidebar-light.png' });
+    await panel.emulateMedia({ colorScheme: 'dark' });
+    await panel.setViewportSize({ width: 260, height: 800 });
+    await panel.screenshot({ path: '/tmp/clickpilot-integrated-sidebar-dark.png' });
+    expect(await panel.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+    await panel.emulateMedia({ reducedMotion: 'reduce' });
+    await expect(panel.locator('.sidebar-perch .robot-companion')).toHaveAttribute('data-expression', 'Still');
+  } finally { release?.(); await context.close(); }
+});
+
+test('a failed character asset leaves the poster and existing ask controls usable', async () => {
+  const { context, page, blockedCharacterRequests } = await setup('guidance.html', true, { failCharacter: true });
+  try {
+    await expect.poll(blockedCharacterRequests).toBeGreaterThan(0);
+    await expect.poll(async () => (await buddyCharacter(page)).poster).toBe(true);
+    await askBuddy(page, 'What does Settings do?');
+    await expect.poll(() => buddyText(page)).toContain('Settings controls your preferences.');
+    expect((await buddyCharacter(page)).ready).toBe('false');
+    expect(requests).toHaveLength(1);
   } finally { await context.close(); }
 });

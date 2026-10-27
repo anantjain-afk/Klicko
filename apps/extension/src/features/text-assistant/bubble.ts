@@ -4,6 +4,7 @@ import { createOverlaySurface } from '../overlay/surface';
 import { bubblePosition, captureSelection, sameSelectedText, selectionAnchor } from './selection';
 import type { TextEvent, TextPageCommand } from '../../lib/text-assistant';
 import { uiTheme, uiDarkTheme, uiTokens } from '../../lib/ui-tokens';
+import { playSound } from '../../lib/sounds';
 
 export function createTextBubble(pageKey: () => string, valid: () => boolean, send: (event: TextEvent) => void) {
   let enabled: { sessionId: string; consent: boolean } | null = null;
@@ -124,6 +125,7 @@ export function createTextBubble(pageKey: () => string, valid: () => boolean, se
       if (!matches(current.identity)) { cancel(true); return; }
       const clean = prepareText(current.text, input.value);
       if (!clean) { note.textContent = 'Use a short question without sensitive information.'; return; }
+      playSound('clicky-text-selection');
       mode = 'requesting';
       send({ type: 'TEXT_SUBMITTED', ...current.identity, ...clean });
       showMessage('Explaining…', false);

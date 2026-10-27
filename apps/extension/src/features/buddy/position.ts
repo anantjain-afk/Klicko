@@ -1,6 +1,6 @@
 export interface Viewport { left: number; top: number; width: number; height: number }
 export interface Position { x: number; y: number }
-export const BUDDY_SIZE = 56;
+export const BUDDY_SIZE = 80;
 export function clampBuddy(position: Position, viewport: Viewport): Position {
   return { x: Math.max(viewport.left + 12, Math.min(position.x, viewport.left + viewport.width - BUDDY_SIZE - 12)),
     y: Math.max(viewport.top + 12, Math.min(position.y, viewport.top + viewport.height - BUDDY_SIZE - 12)) };

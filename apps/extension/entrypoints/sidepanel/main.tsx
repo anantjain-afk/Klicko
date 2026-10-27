@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { browser } from 'wxt/browser';
 import { createRoot } from 'react-dom/client';
 import { AssistantPanel } from '../../src/features/session/AssistantPanel';
 import { MockGuidance } from '../../src/features/session/MockGuidance';
@@ -11,6 +12,9 @@ import { uiTheme, uiDarkTheme } from '../../src/lib/ui-tokens';
 import { Companion } from '../../src/features/buddy/CompanionAvatar';
 import { companionMood } from '../../src/features/buddy/companion';
 import '../../src/features/buddy/companion.css';
+import { RobotCompanion } from '../../src/features/buddy/RobotCompanion';
+import { MotionConfig, motion } from 'motion/react';
+import { playSound } from '../../src/lib/sounds';
 
 type View = 'chat' | 'settings' | 'developer' | 'text';
 type Mode = 'assistant' | 'manual' | 'mock';
@@ -19,11 +23,14 @@ function App() {
   const [view, setView] = useState<View>('chat');
   const [mode, setMode] = useState<Mode>('assistant');
   const [conversationKey, setConversationKey] = useState(0);
+  const [typingTarget, setTypingTarget] = useState<HTMLTextAreaElement | null>(null);
   const menu = useRef<HTMLDetailsElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const sharing = useAiPreferences();
   const session = useGuidanceSession(mode === 'assistant', sharing.guidanceConsent, sharing.textConsent);
   const onboarded = sharing.ready && sharing.preferences.onboardingComplete;
+
+  useEffect(() => { if (!browser.sidePanel.onOpened) playSound('sidebar'); }, []);
 
   useEffect(() => {
     const close = (event: PointerEvent) => {
@@ -60,7 +67,15 @@ function App() {
     setConversationKey((value) => value + 1); openView('chat');
   }
 
-  return <main className="panel">
+  return <MotionConfig reducedMotion="user"><motion.main className="panel"
+    initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
+    onFocusCapture={(event) => {
+      if (event.target instanceof HTMLTextAreaElement && event.target.closest('.chat-composer')) setTypingTarget(event.target);
+    }}
+    onBlurCapture={(event) => { if (event.target === typingTarget) setTypingTarget(null); }}>
+    <div className="sidebar-perch">
+      <RobotCompanion mood={companionMood(session.state, session.textState, session.sharedView?.source ?? 'guidance', session.connected)} typingTarget={typingTarget} />
+    </div>
     <header className="panel-header">
       <div className="brand"><Companion mood={companionMood(session.state, session.textState, session.sharedView?.source ?? 'guidance', session.connected)} /><span>ClickPilot</span></div>
       {onboarded && (view !== 'chat' ? <button className="text-button back-button" onClick={() => openView('chat')}>Back to chat</button>
@@ -107,7 +122,7 @@ function App() {
           : <p className="secondary-intro">Inspect page controls or run a local mock task. Starting a tool ends active guidance.</p>}
       </div>}
     </>}
-  </main>;
+  </motion.main></MotionConfig>;
 }
 
 const rootElement = document.getElementById('root');

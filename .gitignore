@@ -8,3 +8,5 @@ playwright-report/
 .wrangler/
 .dev.vars*
 .env*
+apps/extension/public/buddy/
+apps/extension/public/sounds/

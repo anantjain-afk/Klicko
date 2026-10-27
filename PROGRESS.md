@@ -872,3 +872,184 @@ Captures in `/tmp/clickpilot-redesign/`: `compact-light.png`, `ask-light.png`, `
 - Three preexisting TypeScript errors and four distinct preexisting browser failures (one overlay and three selected-text cases) were independently reproduced on untouched HEAD and remain unresolved outside this visual scope. No backend tests were run.
 
 **STOP: AWAITING USER VERIFICATION.** Do not start a later milestone until the user explicitly verifies this redesign and approves further work. No commit, push, deployment or publication is authorized.
+
+## Rive character and Motion playground, stage 1 — 27 October 2026
+
+Status: **CHARACTER DESIGN AND IDLE APPROVED** by the user on 27 October 2026 with “yes , i approve character design and idle direction”. This supersedes the design/idle stop gate below; it does not approve extension integration. The user requested Rive CLI, Motion for React, a standalone character/playground before extension integration, and approvals between design and subsequent expressions. This entry covers the original character design, idle/gaze rig and isolated movement prototype only. The existing extension remains unchanged.
+
+### Delivered scope
+
+- Installed official Rive CLI 1.8.0 at `~/.rive/bin/rive`; read its official getting-started/agent instructions, generated `character/AGENTS.md`, relevant `rive docs` and object schemas. Opened the native live-reload preview and rendered idle, blink, gaze and static poses with CLI. No account login, upload, signing, publication or shell-profile change.
+- Added `prototypes/robot-playground/character/scene.rml`: an original rounded yellow/graphite robot, two large mechanical eye housings, warm lenses, ivory repair plate and small body. The script-free `public/robot.riv` is **4,235 bytes**. `Buddy` state machine transitions between an eight-second `Idle` timeline and a reduced-motion `Still` pose. Idle includes breathing, gentle head movement and staggered blinks; Rive data bindings smooth bounded gaze.
+- Added a separate React/Motion playground with character study, floating buddy/ask card, and sample sidebar perch. Motion handles floating, spring click nudge, hover/press feedback, bounded dragging, keyboard movement/Home reset, and interruptible context/panel movement. Rive handles the internal character. The robot's body is masked behind the sample sidebar edge; focusing its local composer redirects gaze toward the writing area without reading text.
+- Added dynamic reduced-motion preference handling, a manual reduced-motion toggle, pause, visible keyboard focus, and hidden/offscreen suspension. Pointer/drag updates use refs, Rive properties and Motion values rather than per-frame React state.
+- Dependencies are isolated under the prototype's npm manifest/lockfile: Motion 14.6.0, React Rive 4.37.1 and its matching Canvas 2.45.1. A first attempt using latest standalone Canvas 2.47.1 produced an incompatible WASM import error; aligning the versions resolved it. WASM is served locally, with CDN fallback disabled. The full runtime is substantially larger than the character: final build reports 2,128.71 KB WASM and 667.89 KB JS before gzip; production integration must evaluate/lazy-load that cost.
+- `README.md` documents preview, edits, compile/inspect/export, reproducible pose captures, the future expression sequence, manual verification and Chrome side-panel boundaries. Native Chrome panel chrome cannot be animated like an in-page HTML panel; the current perch demonstrates composition inside the panel only.
+
+### Actual evidence
+
+| Exact command/check | Result |
+| --- | --- |
+| `npm --prefix prototypes/robot-playground run character` | Exit 0; CLI verify: 0 errors/0 warnings; parsed `inspect --summary`: no problems; exported/copied 4,235-byte binary |
+| `~/.rive/bin/rive prototypes/robot-playground/character --screenshot=/tmp/clickpilot-rive-idle.png --advance=1` | Exit 0 after allowing local macOS graphics; image inspected |
+| Same CLI capture with `--screenshot=/tmp/clickpilot-rive-blink.png --advance=144` | Exit 0; mechanical blink pose inspected |
+| Same CLI capture with `--screenshot=/tmp/clickpilot-rive-gaze.png --data=lookX=8 --data=lookY=-7 --advance=60` | Exit 0; bounded upward/right gaze inspected |
+| Same CLI capture with `--screenshot=/tmp/clickpilot-rive-still.png --data=reduceMotion=true --advance=145` | Exit 0; static open-eye pose inspected |
+| `npm --prefix prototypes/robot-playground run typecheck` | Exit 0 |
+| `corepack pnpm exec eslint --config prototypes/robot-playground/eslint.config.mjs prototypes/robot-playground/src prototypes/robot-playground/scripts` | Exit 0 |
+| `npm --prefix prototypes/robot-playground run build` | Exit 0; dependency `use client` directive and >500 KB chunk warnings remain; log `/tmp/clickpilot-robot-final-build.log` |
+| `node /tmp/clickpilot-robot-check.cjs` with local browser access | Final exit 0: drag/keyboard reset and rapid context switching passed; no page/console errors, no external requests, no horizontal overflow at 390px, identical reduced-motion canvas captures 2.8 seconds apart. Log `/tmp/clickpilot-robot-final-browser.log` |
+| `git diff --check` | Exit 0 before handoff; checked again after documentation |
+| Backend and extension regression tests | NOT RUN: isolated prototype; user requested no backend tests; extension runtime/source untouched |
+
+Browser verification caught and corrected dynamic reduced-motion handling: the installed Motion hook reads the initial preference, so the playground now subscribes to media-query changes and forwards them to Rive. Initial capture automation also waited indefinitely for a continuously floating element to become stationary; using viewport captures and an explicit pointer click resolved that harness issue. One extended drag/Home run reported a positional mismatch; an immediate rerun of the same source/check passed without a code change. Manual drag/reset verification remains required. A later rerun initially found the local server had stopped between turns; restarting it allowed the final passing run. No automatic approval rejection occurred.
+
+Native and browser captures were visually inspected. Browser captures in `/tmp/clickpilot-robot-review/`: `portrait.png`, `gaze-left.png`, `gaze-right.png`, `ask.png`, `sidebar.png`, `sidebar-dark.png`, `mobile.png`, `reduced-a.png`, `reduced-b.png`. The final 390px capture follows rapid context switching and may show an empty local composer; the earlier supplied mobile capture also covered entered text. A fresh Impeccable finish reviewer returned **ship to user verification** with no material findings in this slice; a separate documentation handoff found no factual corrections needed. Context/detector tooling could not launch because its engine/cache was unavailable; no detector pass is claimed. These captures/checks establish prototype behavior, not real Chrome extension integration or subjective animation approval.
+
+### Manual Chrome verification and approval
+
+1. Run `npm --prefix prototypes/robot-playground run dev` from the repository root, then open `http://127.0.0.1:5176` in Chrome. Expect the yellow/graphite character to load and breathe/blink gently. Keep DevTools Console and Network open: runtime errors, missing assets or an external request fail this prototype check.
+2. Move the pointer around the face. Expect smooth bounded eye tracking. Drag/release it, try arrow keys while focused, and press Home or Reset position during movement. Expect a usable reset, no stuck drag and no card opening merely from a drag. Click the character to inspect the small spring nudge.
+3. Select Floating buddy and click it to open the sample ask card. Focus/type in its composer: eyes should turn toward the writing area; no request is sent. This first slice does not yet contain the separate curiosity expression or caret tracking.
+4. Choose Open workspace or Sidebar perch. Expect the robot to move to the panel edge and its lower body to disappear behind it. Close and reopen quickly, switch views during motion and reset: expect one robot, one relevant panel and no stuck surfaces. The real Chrome sidebar is not changed in this stage.
+5. Try Light/Dark stage, narrow the Chrome window and zoom. Expect readable labels, visible focus and no clipped composer or horizontal overflow. Toggle Reduce motion and change the system preference while the page remains open: internal character motion and spatial animation should settle. Test Pause/Resume separately, switch tabs, and scroll the stage out of view.
+6. For the native character preview/edit loop, run `~/.rive/bin/rive prototypes/robot-playground/character`. Follow the prototype README to change the RML and run `npm --prefix prototypes/robot-playground run character` before reloading the browser asset. Approve or correct the silhouette, eye design, materials, idle pacing and sidebar perch before the next expression pass.
+
+### Deferred work and stop gate
+
+Listening/typing curiosity, happy cursor-proximity and click expressions, thinking, confused, surprised, sleepy and error are **not implemented yet**. The prototype currently supplies gaze and a Motion nudge, not those richer emotional states. Add and review expressions incrementally after design/idle approval. Real extension integration follows a separate approval after character and movement review. No voice, screenshots, AI feature, backend change, extension permission, commit, push, deployment or publication was added.
+
+**STOP: AWAITING USER VERIFICATION.** This is the user's requested design/idle checkpoint; do not advance to further expressions or integration until explicitly approved.
+
+## Rive character, stage 2 — expressions and attention — 27 October 2026
+
+Status: **EXPRESSIONS AND TIMING APPROVED** by the user on 27 October 2026 with “good , i approve the expressions and timinig continue”. This supersedes the expression stop gate below and authorizes the integration stage recorded next. The user approved the character design and idle direction with “yes , i approve character design and idle direction”. That approval permits this previously requested expression pass; real extension integration still requires a separate approval.
+
+### What changed
+
+- Added Listening, Thinking, Happy, Confused, Surprised, Sleepy and Error to the existing `Buddy` Rive machine, preserving the approved character and idle. There are eight expression states plus Still. A numeric view-model property `expression` selects 0–7; reduced-motion conditions override it. Early-exit blends allow interruption. Each timeline resets the same pose properties so interrupted eye scales/tilts cannot persist.
+- Listening leans toward the composer with open eyes and a blink; Thinking looks upward and searches side-to-side; Happy anticipates/rebounds into squinted eyes; Confused narrows one eye and tilts; Surprised widens the lenses and recoils; Sleepy has heavy lids/long blinks with the Motion float stopped; Error briefly recoils with concern and settles calmly. Listening/Thinking/Sleepy loop. Happy/Confused/Surprised/Error play once and hold for inspection. Select Idle then the expression to replay a short reaction.
+- Automatic mode reacts to cursor proximity with hysteresis, returning to idle on departure. Click produces 420 ms of surprise, then 1.3 seconds of happiness before current attention resumes. Composer focus selects Listening and looks toward its writing area; input events add a tiny gaze acknowledgment. No entered text or caret value is read. Blur restores automatic attention. Manual state, focus, context, pause and visibility changes clean up click timers; pointer frames continue to avoid React state updates.
+- Added accessible preview buttons for all eight expressions and a toolbar that reports actual Rive state-change events. Preview states do not start a task or imply an actual AI result/error. The existing floating/dragging/spring/ask/sidebar prototype remains isolated. No extension/runtime/API/permission/dependency changes.
+- Added a reproducible browser workflow check at `prototypes/robot-playground/scripts/check-expressions.mjs`, using the repository's existing Playwright installation. Updated the prototype README with per-expression playback, native preview/render/edit commands, runtime mapping, manual steps and the next approval gate. The script-free character now exports to **10,667 bytes**.
+
+### Actual validation
+
+| Exact command/check | Result |
+| --- | --- |
+| `npm --prefix prototypes/robot-playground run character` | Exit 0; CLI verify 0 errors/0 warnings, parsed inspect summary no problems; exported/copied 10,667 bytes |
+| `~/.rive/bin/rive prototypes/robot-playground/character --verify` and `~/.rive/bin/rive inspect prototypes/robot-playground/character --summary` | Exit 0; 9 animation states/timelines, 1 machine, 0 inspect problems |
+| CLI native capture command below for expression values 0–7 | All 8 exited 0 and images were inspected. Values 0/1/2/3/4/6 rendered at frame 55, Surprised (5) at frame 18, Error (7) at frame 26 |
+| `npm --prefix prototypes/robot-playground run typecheck` | Exit 0 on final source; also included in build |
+| `corepack pnpm exec eslint --config prototypes/robot-playground/eslint.config.mjs prototypes/robot-playground/src prototypes/robot-playground/scripts` | Exit 0 on final source |
+| `npm --prefix prototypes/robot-playground run build` | Exit 0; log `/tmp/clickpilot-expressions-build.log`. Existing dependency `use client` and bundle-size warnings remain. WASM 2,128.71 KB; JS 670.02 KB before gzip |
+| `CLICKPILOT_CAPTURE_DIR=/tmp/clickpilot-expression-review npm --prefix prototypes/robot-playground run check:browser` | Exit 0; all 8 real Rive state changes, approach/departure, surprise→happy, ask/sidebar typing, cancellation by manual expression, dynamic reduced-motion override/static canvas, pause/resume, 390px overflow, drag/Home and single canvas passed; **zero console/page errors and zero external requests** |
+| `git diff --check` | Exit 0; rechecked after documentation |
+| Backend / extension regression tests | NOT RUN: user requested no backend tests; extension source/runtime untouched |
+
+Native capture pattern, substituting the expression number/name and frame above:
+
+```sh
+~/.rive/bin/rive prototypes/robot-playground/character --screenshot=/tmp/clickpilot-expression-review/happy.png --data=expression=3 --advance=55
+```
+
+The first browser attempts stopped on ambiguous composer locators while ask/sidebar exit/entrance overlapped. The checker now uses each composer's accessible name; this required no UI behavior change. An initial standalone typecheck caught narrowing of the optional state-change event name, and lint caught browser globals inside the check's page callback; both were corrected before the final passing checks. The dev-server start found port 5176 already occupied by the existing playground; that server was reused. No automatic approval rejection occurred.
+
+Native captures: `/tmp/clickpilot-expression-review/{idle,listening,thinking,happy,confused,surprised,sleepy,error}.png`. Browser captures in the same directory: `web-idle.png`, `web-listening.png`, `web-thinking.png`, `web-happy.png`, `web-confused.png`, `web-surprised.png`, `web-sleepy.png`, `web-error.png`, `web-typing.png`, `web-sidebar.png`, `web-mobile.png`, `reduced-a.png`, `reduced-b.png`. Inspected all eight native poses and desktop Happy/Surprised, typing, sidebar and narrow dark captures. A fresh finish reviewer independently inspected those captures/source and returned **ship** at standalone prototype scope, with no material findings. No detector pass is claimed: its engine/cache remained unavailable from the preceding stage. Static captures and scripted checks do not establish subjective animation quality or real Chrome side-panel integration.
+
+### Manual Chrome verification
+
+1. Open `http://127.0.0.1:5176/` (or run `npm --prefix prototypes/robot-playground run dev` if needed). In Automatic, approach/depart the face and move around it: expect happy/idle transitions, smooth gaze within the lenses and no repeated happy entrance while lingering near the threshold. Console errors or external network requests fail verification.
+2. Click for surprise followed by happiness. Try each named preview; select Idle then the desired state to replay a short reaction. Compare personality/intensity/timing against the table in the README. Error should recover calmly; Sleepy should reduce movement. Wrong toolbar state, stale pose or a distracting repeated recoil fails verification.
+3. In Automatic/Floating buddy, open the ask card and focus/type. Expect curious Listening and gaze toward the writing area. Blur it, then Open workspace and repeat: expect attentive eyes over the panel edge. No request is submitted. Select Thinking during a click reaction and wait two seconds: it must remain Thinking rather than being overwritten by a stale happy timer.
+4. Change views rapidly, drag/release, press arrow keys/Home while focused, reset mid-movement and close/reopen panels. Expect one robot, bounded movement, reliable reset and no accidental card opening after drag. Check light/dark, a narrow window and browser zoom for readable controls, visible focus and contained composers.
+5. Enable reduced motion and change the system preference while open: every preview should settle to Still. Select an expression while paused, then resume: expect that selected expression. Check Pause/Resume separately and switch tabs/scroll out of view to verify suspension. Motion continuing in the still pose fails verification.
+
+**STOP: AWAITING USER VERIFICATION.** Approve expression personality, intensity and timing before the separate extension-integration stage. No voice, screenshot feature, AI feature, commit, push, deployment or publication was introduced.
+
+## Animated companion, stage 3 — extension integration — 27 October 2026
+
+Status: **AWAITING USER VERIFICATION** in Chrome. The user approved expressions/timing with “good , i approve the expressions and timinig continue”, completing stage 2 and authorizing this integration. No later milestone, commit, push, deployment or publication is authorized.
+
+### Delivered behavior and boundaries
+
+- Integrated the approved yellow/graphite Rive character into the floating buddy/ask experience and the real React sidebar. The sidebar robot peeks over its header edge, looks toward the composer, and uses existing task states for expressions. Small header/message avatars use the same character's static poster, avoiding a canvas per message. The approved standalone playground remains available for editing/review.
+- Rive controls internal expressions/gaze; Motion controls float, click bounce, native spring positioning, bounded drag momentum, ask-card entrance/exit and sidebar content entrance. The launcher is now 80px so the mechanical eyes remain legible; existing clamp tests were adjusted to that actual size. Original native DOM controls, trusted-event checks, shared task ownership, consent, guidance, selected-text behavior and recovery are preserved. Input focus/event geometry informs attention without reading additional text or caret values.
+- Automatic cursor approach/departure produces Happy/Idle with hysteresis. Click produces the approved Surprise→Happy reaction, interrupted by typing/task changes. Requests show Thinking; guidance shows Listening and floating gaze toward the target; answers show Happy; clarification shows Confused; pause/recovery shows Sleepy; errors briefly express concern then settle. A focused new-question composer can show Listening from paused/clarification states. Reduced motion selects Still and removes float, bounce, spring travel and drag momentum.
+- Opening the sidebar docks the page buddy toward the right edge. Clicking/dragging it restores normal local interaction. Chrome owns its outer side-panel frame/width/closure; only extension content and the page buddy are animated. There is no new page-action automation.
+- Added pinned extension dependencies Motion 14.6.0, Rive React 4.37.1 and its matching Canvas 2.45.1, as explicitly requested/approved. Build/typecheck prepare local copies of the approved 10,667-byte character and installed WASM; generated copies are ignored. CDN fallback is disabled. Final unpacked build is about **3.62 MB**, including **2.13 MB WASM**, a **516.27 KB content script**, **521.84 KB sidebar JS** and shared **278.57 KB Rive JS**. These are raw sizes; the runtime cost is larger than the character asset alone.
+- The direct content-script Rive renderer worked on ordinary pages but failed WASM compilation under a strict page CSP. A minimal isolated-world WASM compilation reproduced the same failure. The final floating artwork therefore uses a packaged extension-origin `robot.html` renderer with a nonce/source-bound private MessageChannel. It accepts only bounded numeric expression/gaze and boolean visibility/motion flags. Extra fields, page text and task commands are rejected; no extension task/service IPC is added to the frame. Native controls remain outside it. Exposing only `robot.html` and enabling local WASM in extension CSP adds **no browser permission or host permission** and does not modify website CSP.
+- Hidden/offscreen graphics suspend; unload closes the channel/runtime; back/forward cached frames pause and resume. The static poster stays visible on load/failure, and ask controls work independently. Drag release momentum decays after a held pause; tiny viewport dismissal resets the ask surface. Documentation: `docs/companion-animation.md`, README and prototype README. No voice, screenshot feature, new AI feature or backend change.
+
+### Exact check evidence
+
+| Command/check | Actual result |
+| --- | --- |
+| `corepack pnpm --filter @clickpilot/extension build` | Final exit 0. Output `apps/extension/.output/chrome-mv3`; log `/tmp/clickpilot-integration-build.log`. >500 KB chunk warning remains |
+| `corepack pnpm exec eslint apps/extension` | Final exit 0; `/tmp/clickpilot-integration-lint.log` |
+| `corepack pnpm --filter @clickpilot/extension test` | Exit 0; **126 tests in 14 files passed**. Includes two graphics-channel boundary tests; `/tmp/clickpilot-integration-unit.log` |
+| `corepack pnpm --filter @clickpilot/extension typecheck` | Final exit 2; exactly three preexisting TS2339 errors in unchanged `src/features/session/background-tasks.ts`: line 246 (`type`), line 248 (`tabId`, `snapshot`). No new type errors. `/tmp/clickpilot-integration-types.log` |
+| `corepack pnpm exec playwright test tests/e2e/buddy.spec.ts --workers=1` | Final exit 0; **8/8 passed**, 32.8 seconds, on final build. `/tmp/clickpilot-integration-final-buddy.log` |
+| `corepack pnpm exec playwright test tests/e2e/buddy.spec.ts tests/e2e/overlay.spec.ts --workers=1` | Exit 1; **43/44 passed**. Sole failure: the previously baseline-reproduced `overlay.spec.ts:241` panel-disconnection case leaves one overlay instead of zero. All 8 buddy workflows passed. `/tmp/clickpilot-integration-final-browser.log` |
+| `corepack pnpm exec playwright test tests/e2e/buddy.spec.ts --grep 'packaged Rive\|failed character' --workers=1` | Exit 0; **2/2 passed** before the final full buddy rerun. `/tmp/clickpilot-integration-character-browser.log` |
+| Manifest/output inspection | Browser/host permission lists unchanged; CSP enables packaged WASM; only `robot.html` exposed to HTTP/HTTPS; `.riv`/WASM packaged locally |
+| `git diff --check` | Exit 0; repeated after final documentation |
+| Backend tests | **NOT RUN**, as requested |
+
+The three type errors and panel-disconnection failure were independently reproduced on untouched HEAD in the earlier visual-redesign entry. They recur here; the worker/overlay modules remain unchanged by this integration. Typecheck and the combined browser run are not reported as passing. The final buddy-only run followed the last drag-release/tiny-viewport/bfcache adjustments; the broader overlay run preceded those UI-only adjustments. The three preexisting selected-text failures recorded earlier were not rerun as a separate suite; the existing buddy-selected-text workflow passed.
+
+Browser coverage includes local open/no-request behavior, shared answer/sidebar continuation, Stop/consent/late reply rejection, worker restart, navigation and tab/origin isolation, drag/hide/non-blocking page interaction, selected-text assistance, actual Rive loading on a strict-CSP fixture, cursor Happy/Idle, click Surprise, typing Listening, request Thinking, stopped Sleepy, sidebar Listening, dynamic Still and an explicitly intercepted/blocked character request with usable poster/form fallback. New graphics packets reject unsupported expressions, non-finite/out-of-range gaze, extra content and task commands. Browser workflows use local synthetic fixtures and mocked responses, not a real provider or backend test suite.
+
+### Visual review
+
+Inspected actual integrated Chrome captures `/tmp/clickpilot-integrated-ask.png` (1100×800), `/tmp/clickpilot-integrated-sidebar-light.png` (360×800), and `/tmp/clickpilot-integrated-sidebar-dark.png` (260×800). Rive is loaded, the writing-area focus is visible, the perch hides the lower body, controls/composers remain contained, and the narrow page has no horizontal overflow. The final buddy run regenerated those captures. A fresh finish reviewer inspected the captures and production source and returned **ship to user verification**, with no material findings. A separate documentation handoff confirmed facts/commands; a stale prototype intro was corrected. No detector pass is claimed because the skill engine/cache remained unavailable. Static captures do not establish subjective pacing or actual Chrome side-panel lifecycle behavior.
+
+### Numbered manual Chrome verification
+
+1. Reload ClickPilot at `chrome://extensions` using `apps/extension/.output/chrome-mv3`. Activate it on a permitted normal page. Expect the yellow/graphite buddy without a new permission prompt. Keep Console/Network open: repeated asset failures, runtime exceptions or CDN requests fail verification. A momentary poster during startup is expected; deliberately blocked assets should leave usable controls.
+2. Approach/depart the robot and move around its face: expect smooth gaze, a happy approach reaction and idle on departure. Click to open/close the ask card: expect surprise→happy, a small bounce and smooth card transitions. Focus/type: expect curious attention toward the writing area. Hover, focus and typing alone must send no provider request.
+3. Drag quickly and slowly, hold before release, grab during a spring, press Alt+Arrow keys and Home while focused, resize/zoom, and use Escape/Close/Hide. Expect bounded positioning, a reliable reset, no stale momentum after holding and no accidental Ask from a drag. Ordinary webpage controls must remain usable.
+4. With existing sharing consent/service configured, explicitly ask a synthetic/public question. Expect Thinking, then the existing answer or guidance. During guidance expect attentive gaze toward the highlighted element; follow each page action yourself. Stop/Retry/Continue/Done must retain existing behavior. No automatic click, typing, submission or navigation is allowed.
+5. Open the real Chrome sidebar from the ask card. Expect the page buddy to move toward the edge, the same conversation/task in the workspace, and the robot peeking over its header. Type a new question and check curiosity; try More options/Settings/text assistance and return. Close/reopen Chrome's panel mid-task: expect existing task retention and usable controls. Chrome's outer frame opens/closes under browser control.
+6. Repeat in light/dark appearance, a narrow sidebar and browser zoom; check long content/settings, keyboard focus, selection assistance and target alignment while scrolling. Expect readable surfaces and contained composers. The synthetic panel HTML captures are not proof of actual Chrome panel frame behavior.
+7. Change the system reduced-motion preference while open: expect Still with no floating, bounce, spring travel or drag momentum, while controls still work. Switch tabs, scroll out of view, navigate back/forward and reactivate/reload: expect suspension/cleanup and recovery without duplicate/frozen characters. Back/forward-cache handling especially still needs real-browser manual verification.
+
+**STOP: AWAITING USER VERIFICATION.** Integration is built and reviewable. Do not start the next milestone until the user verifies it in Chrome and approves further work.
+
+## Interaction sounds and reply boings — 27 October 2026
+
+Status: **AWAITING USER VERIFICATION** for audible timing/volume. The user authorized the named local interaction sounds, explicitly waived unit tests, and then requested `boing-1` for normal replies and `boing-2` for selected-text answers. This does not imply manual verification of the preceding UI milestone.
+
+### Implementation
+
+- Bundled exactly nine supplied WAVs from root `sounds/`: agent launch/close, clicky text open/close/send/selection, sidebar and boing-1/boing-2. Build preparation copies originals unchanged into ignored `apps/extension/public/sounds/`, then WXT packages them. No new library, remote audio or microphone feature.
+- Added typed `playSound()` / cue validation in `src/lib/sounds.ts`. Buddy/card/form handlers trigger cues only at the corresponding existing action; invalid/disabled submissions remain silent. First show and show after Hide play launch; card reopen/repeated toolbar activation do not replay launch. Explicit card close, bot toggle-close and Escape play the card-close cue. Hide uses agent-close.
+- A new assistant-message ID observer in the shared task owner plays boing-1 for normal replies and boing-2 for selected-text replies. It ignores initial restored history and does not replay when a reply appears in both views or history is reopened. Only the cue name reaches the audio player; no message text is transmitted.
+- Added the **offscreen** permission and a minimal packaged `audio.html` player with the `AUDIO_PLAYBACK` reason, after explaining why the permission was needed. Chrome blocked cold-launch playback inside the webpage character frame (`NotAllowedError`); offscreen playback succeeded before page interaction and survives UI closure. The player is lazy, validated, local, 50% volume and replaces the previous clip to avoid overlap. Chrome retires the document after 30 seconds of audio inactivity. No extra website access/host permission, persistent keepalive or graphics-channel change.
+- Chrome's real `sidePanel.onOpened` event plays sidebar (Chrome 141+, with older-version document-open fallback); `onClosed` plays agent-close (Chrome 142+). Chrome actually returned `/sidepanel.html`, so paths are normalized before matching. Closing the entire browser is outside a surviving playback context. Source/usage/mappings are documented in `docs/interaction-sounds.md`.
+
+### Actual checks
+
+| Exact command/check | Result |
+| --- | --- |
+| `corepack pnpm --filter @clickpilot/extension build` | Final exit 0; all nine WAVs and audio page packaged. Unpacked build about 4.78 MB; existing >500 KB chunk warning remains. `/tmp/clickpilot-sounds-build.log` |
+| `corepack pnpm exec eslint apps/extension` | Final exit 0; `/tmp/clickpilot-sounds-lint.log` |
+| `corepack pnpm --filter @clickpilot/extension typecheck` | Final exit 2; same three preexisting TS2339 errors, now shifted to background-tasks.ts:254 (`type`) and :256 (`tabId`, `snapshot`). No new type errors. `/tmp/clickpilot-sounds-types.log` |
+| `node /tmp/clickpilot-sounds-smoke.mjs` | Final exit 0 on final build: actual cold-launch audio advanced to 0.756 seconds; all nine requested clips successfully started; real Chrome sidebar opened/closed and both native event cues played; Hide/relaunch worked; boing-1 and boing-2 played exactly once each, with no replay on opening the sidebar; one launch per activation. `/tmp/clickpilot-sounds-smoke.log` |
+| `git diff --check` | Exit 0; rechecked after documentation |
+| Unit tests / backend tests | **NOT RUN** for this task, as requested; no test files added or changed for sounds |
+
+The temporary browser smoke check used a local static page and intercepted synthetic normal/selected-text replies, plus the actual packaged extension and Chrome sidebar. It observed successful `HTMLMediaElement.play()` promises and cold-launch playback progress; it did not listen through human speakers. Early checks identified the cold-launch autoplay block and the leading slash in real sidebar event paths; both were fixed before the final passing check. An initial smoke run also needed to re-enable the existing selected-text mode after a normal guidance request; only the temporary check changed for that lifecycle rule. No automatic approval rejection occurred.
+
+### Manual Chrome verification
+
+1. Reload `apps/extension/.output/chrome-mv3` at `chrome://extensions` with the new audio-only offscreen permission. Activate ClickPilot on an ordinary permitted page: expect agent-launch once. Hide and reactivate: expect close then launch. Reopening the ask card alone must not replay launch.
+2. Open/close the bot's ask card using the bot, close button and Escape: expect the corresponding clicky open/close clips. Send a valid public question with existing consent/service configured: expect clicky-text-send and then one boing-1 for a new normal reply. Invalid/disabled sends must not produce a send cue.
+3. Enable/re-enable selected-text assistance if needed, select public text and submit its question: expect clicky-text-selection then one boing-2. Merely selecting text must not play the send cue. Opening the same answer in the sidebar must not replay the boing.
+4. Open the actual Chrome sidebar: expect sidebar.wav; close its built-in panel control: expect agent-close on Chrome 142+. Check that a close cue finishes and that volume/timing are comfortable. Rapid actions may replace the preceding clip rather than overlap. Record missing, doubled or overly loud cues before approving this addition.
+
+**STOP: AWAITING USER VERIFICATION.** No commit, push, deployment or publication was performed. No later milestone is authorized.
+
+## Git handoff authorization — 27 October 2026
+
+The user explicitly requested committing and pushing all current changes to `feature/redesign`. This authorizes the redesign/prototype/runtime/audio/source-asset/documentation commit and publication of that Git branch to the configured origin. It does not authorize deployment, a pull request merge, or a later implementation milestone, and does not change the manual Chrome verification status recorded above. No additional tests were run for this source-control-only handoff; the prior check evidence and known limitations remain applicable. The resulting commit/push confirmation is reported in the conversation.

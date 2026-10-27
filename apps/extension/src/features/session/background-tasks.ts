@@ -1,4 +1,5 @@
 import { browser, type Browser } from 'wxt/browser';
+import { playUiSound } from '../sounds/background';
 import { AI_PREFERENCES_KEY, DEFAULT_AI_PREFERENCES } from '../../lib/preferences';
 import { handlePanelRequest, inspectActiveTab, sharingPreferences, tabAccess } from '../../lib/page-access';
 import { isPanelRequest, isTrackPageRequest } from '../../lib/messages';
@@ -72,6 +73,13 @@ export function startBackgroundTasks() {
       }, preferences, flags, preferences.guidance ? saved : null);
       const tab = await browser.tabs.get(tabId);
       if (closedTabs.has(tabId)) { task.dispose(); transport.dispose(); throw new Error('Tab closed.'); }
+      // One observer per task owner prevents duplicate cues across buddy/sidebar views.
+      let lastMessageId = task.snapshot().messages.at(-1)?.id ?? 0;
+      task.subscribe((view) => {
+        const reply = view.messages.filter((message) => message.id > lastMessageId && message.role === 'assistant').at(-1);
+        lastMessageId = Math.max(lastMessageId, view.messages.at(-1)?.id ?? 0);
+        if (reply) void playUiSound(reply.source === 'text' ? 'boing-2' : 'boing-1').catch(() => undefined);
+      });
       return { task, transport, lastUrl: tab.url };
     })();
     tasks.set(tabId, creating);
