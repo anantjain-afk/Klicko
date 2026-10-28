@@ -77,7 +77,7 @@ function App() {
       <RobotCompanion mood={companionMood(session.state, session.textState, session.sharedView?.source ?? 'guidance', session.connected)} typingTarget={typingTarget} />
     </div>
     <header className="panel-header">
-      <div className="brand"><Companion mood={companionMood(session.state, session.textState, session.sharedView?.source ?? 'guidance', session.connected)} /><span>ClickPilot</span></div>
+      <div className="brand"><Companion mood={companionMood(session.state, session.textState, session.sharedView?.source ?? 'guidance', session.connected)} /><span>Klicko</span></div>
       {onboarded && (view !== 'chat' ? <button className="text-button back-button" onClick={() => openView('chat')}>Back to chat</button>
         : <details className="panel-menu" ref={menu}>
           <summary aria-label="More options">
@@ -104,7 +104,7 @@ function App() {
       </div>}
       {view === 'text' && <div className="secondary-view">
         <h1 ref={heading} tabIndex={-1}>Text selection</h1>
-        <p className="secondary-intro">Select a passage on the page, then choose Ask ClickPilot. Your answer will appear in the chat.</p>
+        <p className="secondary-intro">Select a passage on the page, then choose Ask Klicko. Your answer will appear in the chat.</p>
         {!session.textConsent && <p className="chat-notice">Selected-text sharing is off. <button className="text-button" onClick={() => openView('settings')}>Open Settings</button></p>}
         <p className="text-selection-status" role="status">{session.textState.message}</p>
         <div className="guidance-actions">
@@ -126,7 +126,7 @@ function App() {
 }
 
 const rootElement = document.getElementById('root');
-if (!rootElement) throw new Error('ClickPilot panel root is missing.');
+if (!rootElement) throw new Error('Klicko panel root is missing.');
 const theme = document.createElement('style');
 theme.textContent = `:root { ${uiTheme} } @media (prefers-color-scheme: dark) { :root { ${uiDarkTheme} } }`;
 document.head.append(theme);

@@ -89,7 +89,7 @@ export function createTextBubble(pageKey: () => string, valid: () => boolean, se
       ::selection { background:var(--green); color:var(--button-ink); }
     `;
     box = document.createElement('div'); box.className = 'bubble';
-    box.setAttribute('role', 'region'); box.setAttribute('aria-label', 'Ask ClickPilot about selected text');
+    box.setAttribute('role', 'region'); box.setAttribute('aria-label', 'Ask Klicko about selected text');
     surface.shadow.append(style, box); document.documentElement.append(surface.host);
     return box;
   }
@@ -157,7 +157,7 @@ export function createTextBubble(pageKey: () => string, valid: () => boolean, se
     cancel(); mode = 'offer';
     current = { ...captured, identity: { sessionId: enabled.sessionId, pageKey: pageKey(), selectionId: crypto.randomUUID() } };
     emit('TEXT_SELECTED');
-    base().append(button('Ask ClickPilot', () => compose())); place();
+    base().append(button('Ask Klicko', () => compose())); place();
   }
   function schedule() { clearTimeout(completionTimer); completionTimer = setTimeout(finishSelection, 120); }
   function inside(event: Event) { return !!surface && event.composedPath().includes(surface.host); }

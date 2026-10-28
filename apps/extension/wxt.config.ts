@@ -4,7 +4,7 @@ export default defineConfig({
   modules: ['@wxt-dev/module-react'],
   manifestVersion: 3,
   manifest: {
-    name: 'ClickPilot',
+    name: 'Klicko',
     description: 'Visual guidance for websites, one user action at a time.',
     permissions: ['activeTab', 'scripting', 'storage', 'offscreen'],
     host_permissions: ['http://127.0.0.1:8787/*'],
@@ -17,7 +17,7 @@ export default defineConfig({
       matches: ['http://*/*', 'https://*/*'],
     }],
     action: {
-      default_title: 'Turn ClickPilot on or off for all supported tabs',
+      default_title: 'Turn Klicko on or off for all supported tabs',
     },
   },
 });

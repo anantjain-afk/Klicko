@@ -60,7 +60,7 @@ export function AssistantPanel({ session, live, visible, onSettings }: {
     void controller.current?.start(value);
   }
 
-  return <section className="chat-workspace" aria-label="Ask ClickPilot" data-mood={mood}>
+  return <section className="chat-workspace" aria-label="Ask Klicko" data-mood={mood}>
     <div className="conversation" ref={scrollArea} onScroll={() => {
       const element = scrollArea.current;
       if (element) followLatest.current = element.scrollHeight - element.scrollTop - element.clientHeight < 60;
@@ -71,14 +71,14 @@ export function AssistantPanel({ session, live, visible, onSettings }: {
       </div>}
       <div className="chat-messages" role="log" aria-label="Conversation" aria-live="polite" aria-relevant="additions">
         {messages.map((message) => <div className={`chat-message ${message.role}`} key={message.id}>
-          {message.role === 'assistant' && <div className="reply-author"><Companion mood="idle" /><span>ClickPilot</span></div>}
-          <span className="visually-hidden">{message.role === 'user' ? 'You' : 'ClickPilot'}: </span>
+          {message.role === 'assistant' && <div className="reply-author"><Companion mood="idle" /><span>Klicko</span></div>}
+          <span className="visually-hidden">{message.role === 'user' ? 'You' : 'Klicko'}: </span>
           {message.source === 'text' && message.role === 'user' && <span className="message-context">Selected text</span>}
           <p>{message.text}</p>
         </div>)}
       </div>
       {session.restartNotice && <p className="chat-notice">Task restored. Continue when you’re ready.</p>}
-      {!session.storageAvailable && <p className="chat-notice">Keep this panel open. ClickPilot couldn’t save a restart reminder.</p>}
+      {!session.storageAvailable && <p className="chat-notice">Keep this panel open. Klicko couldn’t save a restart reminder.</p>}
     </div>
 
     <div className="chat-bottom">
@@ -99,7 +99,7 @@ export function AssistantPanel({ session, live, visible, onSettings }: {
       <form className="chat-composer" onSubmit={submit}>
         <label htmlFor="assistant-question" className="visually-hidden">What would you like help with?</label>
         <textarea id="assistant-question" rows={2} required maxLength={240} value={question}
-          placeholder="Ask ClickPilot…" onChange={(event) => setQuestion(event.target.value)}
+          placeholder="Ask Klicko…" onChange={(event) => setQuestion(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
               event.preventDefault(); event.currentTarget.form?.requestSubmit();

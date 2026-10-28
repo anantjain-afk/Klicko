@@ -47,7 +47,7 @@ export const NAVIGATION_MAX_SIGNALS = 12;
 const INSPECTION_ERRORS = {
   'no-tab': 'No active tab was found. Open a website and try again.',
   unsupported: 'This page cannot be inspected. Open a regular website.',
-  reactivate: 'Click the ClickPilot toolbar icon on this tab to grant access, then Retry.',
+  reactivate: 'Click the Klicko toolbar icon on this tab to grant access, then Retry.',
   changed: 'The page changed during inspection. Retry on the current page.',
 };
 
@@ -139,7 +139,7 @@ function createSession(client: SessionClient, onChange: (state: GuidanceState) =
           return;
         }
         if (!isInspectionResponse(response) || response.requestId !== run.requestId) {
-          pause('ClickPilot couldn’t check this page. Try again.'); return;
+          pause('Klicko couldn’t check this page. Try again.'); return;
         }
         if (response.type === 'INSPECTION_ERROR') { suspend(INSPECTION_ERRORS[response.reason]); return; }
         if (run.tabId !== undefined && (run.tabId !== response.tabId || (run.snapshot && run.snapshot.pageKey !== response.snapshot.pageKey))) {
@@ -164,7 +164,7 @@ function createSession(client: SessionClient, onChange: (state: GuidanceState) =
           const reply = validateGuidanceResponse(value, { ...identity, page: response.snapshot },
             eligibleElements(response.snapshot.elements).map((element) => element.id));
           if (!reply) {
-            cancel(); transition({ kind: 'error', message: 'ClickPilot couldn’t use that reply safely. Try again.' }); return;
+            cancel(); transition({ kind: 'error', message: 'Klicko couldn’t use that reply safely. Try again.' }); return;
           }
           if (reply.result.kind !== 'guidance') {
             // Retain snapshot tracking so navigation also invalidates text-only replies.
@@ -197,7 +197,7 @@ function createSession(client: SessionClient, onChange: (state: GuidanceState) =
           const result: unknown = await client.highlight(response.tabId, response.snapshot, selection.targetId, selection.instruction,
             { sessionId: run.sessionId, requestId: run.requestId, ...(live ? { observe: true, expectedOutcome: run.selection?.expectedOutcome } : {}) });
           if (active !== run) return;
-          if (!isOverlayResponse(result)) { pause('ClickPilot couldn’t point to that control. Try again.'); return; }
+          if (!isOverlayResponse(result)) { pause('Klicko couldn’t point to that control. Try again.'); return; }
           if (result.ok) { run.recoveryStarted = undefined; run.navigationCount = 0; transition({ kind: 'waiting', instruction: selection.instruction, ...(selection.message ? { message: selection.message } : {}), ...(live ? { stepNumber: run.context.stepNumber, nextStep: run.selection?.nextStep, previousStatus: run.context.previousStep?.status } : {}) }); return; }
         }
         await client.clear(response.tabId, response.snapshot.snapshotId);
@@ -232,7 +232,7 @@ function createSession(client: SessionClient, onChange: (state: GuidanceState) =
         run.context.previousStep = { action: run.selection!.instruction, event: 'trusted_click', status: 'pending' };
         transition({ kind: run.selection?.nextStep === 'none' ? 'clicked' : 'verifying',
           message: run.selection?.nextStep === 'none'
-            ? 'Click observed. ClickPilot has not verified that the task is complete. No automatic next step.'
+            ? 'Click observed. Klicko has not verified that the task is complete. No automatic next step.'
             : 'Click observed. Checking the updated page…' });
         run.observationTimeout = setTimeout(() => {
           if (active !== run || (state.kind !== 'verifying' && state.kind !== 'clicked')) return;
@@ -250,7 +250,7 @@ function createSession(client: SessionClient, onChange: (state: GuidanceState) =
         cancel();
         transition({ kind: 'clicked', message: message.status === 'verified'
           ? 'The step outcome was verified. Overall task completion is not verified. No automatic next step.'
-          : 'Click observed. ClickPilot has not verified that the task is complete. No automatic next step.' });
+          : 'Click observed. Klicko has not verified that the task is complete. No automatic next step.' });
         return;
       }
       if (message.status === 'not_verified' || !message.changed) {
@@ -264,7 +264,7 @@ function createSession(client: SessionClient, onChange: (state: GuidanceState) =
     }
     if (state.kind !== 'waiting' && state.kind !== 'highlighting') return;
     cancel();
-    transition({ kind: 'clicked', message: 'Click observed. ClickPilot has not verified that the task is complete.' });
+    transition({ kind: 'clicked', message: 'Click observed. Klicko has not verified that the task is complete.' });
   }
 
   async function advance(run: ActiveRun) {

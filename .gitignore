@@ -10,3 +10,5 @@ playwright-report/
 .env*
 apps/extension/public/buddy/
 apps/extension/public/sounds/
+# Local launch video and render artifacts
+/brag-output/

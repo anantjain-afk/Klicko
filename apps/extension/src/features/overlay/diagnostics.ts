@@ -8,7 +8,7 @@ type HighlightFailure = 'registry_missing' | 'identity_mismatch' | 'unsupported_
 // Only fixed codes reach the console. Never pass DOM nodes, page text or identity values.
 export function reportHighlightFailure(reason: HighlightFailure, probe?: HighlightProbe): null {
   if (import.meta.env.DEV) {
-    console.debug('[ClickPilot highlight]', { reason, ...(probe ? { probe } : {}) });
+    console.debug('[Klicko highlight]', { reason, ...(probe ? { probe } : {}) });
   }
   return null;
 }

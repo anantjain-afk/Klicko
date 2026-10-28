@@ -4,6 +4,25 @@ Updated: 28 October 2026.
 
 ## Current status
 
+Extension display-name change to Klicko: **VERIFIED by the user**, 28 October 2026. The user confirmed the name change in Chrome and authorized pushing it to `final-touchs`. The manifest name/action title, side panel, buddy, selection UI, status/error messages, accessible labels, and extension page titles now say Klicko. The two API instructions that identify the assistant also say Klicko so generated answers do not inherit the old product name. Internal `clickpilot` IDs, storage keys, package names, and protocols remain stable. No dependency or browser permission changed.
+
+### Klicko name-change checks
+
+| Exact command/check | Result |
+| --- | --- |
+| `corepack pnpm typecheck` | Exit 0. |
+| `corepack pnpm lint` | Exit 0. |
+| `corepack pnpm test` | Exit 0: 92 API and 130 extension unit tests passed. |
+| `WRANGLER_LOG_PATH=/tmp/klicko-wrangler.log corepack pnpm build` | Exit 0: extension and API dry-run builds passed. The initial build also exited 0 but Wrangler could not write its default log inside the sandbox; setting the log path removed that warning. No deployment occurred. |
+| `corepack pnpm exec playwright test tests/e2e/buddy.spec.ts tests/e2e/text-assistant.spec.ts tests/e2e/assistant.spec.ts --grep 'buddy opens locally\|no sharing without consent\|selection completes before\|6B forced worker loss' --workers=1 --output=/tmp/klicko-browser-results` | 3 passed, 1 failed. Buddy/sidebar and selected-text name paths passed. The existing 6B worker-recovery test stops at `.guidance-state`, a selector from the older panel layout; the current recovery status is rendered at `.chat-status`. The failure occurred before its renamed text assertion could be evaluated. The first sandbox run could not bind the fixture server; the permitted local run produced these results. |
+| Search of extension source, extension unit tests, E2E tests, and assistant API instructions for `ClickPilot`; generated manifest inspection; `git diff --check` | No old product-name literals in those locations; manifest says `Klicko`; diff check passed. Test fixture page copy, historical docs and internal `clickpilot` identifiers were intentionally left as-is. |
+
+**Manual Chrome verification**
+
+1. Rebuild with `WRANGLER_LOG_PATH=/tmp/klicko-wrangler.log corepack pnpm build`, then reload the unpacked extension from `apps/extension/.output/chrome-mv3` at `chrome://extensions`. Expect its listed name and toolbar tooltip to say **Klicko**. Seeing ClickPilot means the old build is loaded.
+2. Activate Klicko on an ordinary page and open the sidebar. Expect **Klicko** in the header, “Ask Klicko…” in the composer, and **Klicko** beside assistant replies. Open the floating buddy; expect **Klicko**, “Ask Klicko…” and “Hide Klicko.”
+3. Select ordinary page text and use the selection bubble. Expect **Ask Klicko**. Check Settings and any access/reconnection messages encountered; none should display ClickPilot. If a label still does, report where it appeared and whether the extension was reloaded.
+
 Three-issue repair: **VERIFIED by the user** on 28 October 2026. After the global activation correction, the user confirmed “everything is working how it should” and authorized committing and pushing the changes to `final-touchs`. The recorded automated results and limitations remain unchanged; earlier status entries are historical.
 
 Mascot visual redesign: **AWAITING USER VERIFICATION**, 27 October 2026. The approved UI refresh is implemented with a shared green workshop robot, warm light/dark surfaces and restrained interaction. Extension lint, 124 unit tests and build passed; three preexisting type errors and four distinct preexisting browser failures were reproduced on untouched HEAD. All six buddy workflows passed in both focused browser runs; combined runs finished 41/42 and 28/31. Exact evidence, visual review, limitations and numbered Chrome checks are recorded at the end. No backend tests, Git operations, deployment or next milestone were performed.

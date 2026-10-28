@@ -11,7 +11,7 @@ async function ensureAudioDocument() {
   if (!creating) {
     creating = browser.offscreen.createDocument({
       url: '/audio.html', reasons: ['AUDIO_PLAYBACK'],
-      justification: 'Play bundled ClickPilot interaction sounds, including startup and close cues.',
+      justification: 'Play bundled Klicko interaction sounds, including startup and close cues.',
     }).finally(() => { creating = undefined; });
   }
   return creating;

@@ -52,11 +52,11 @@ async function clickBuddy(page: Page, name: string) {
   await page.mouse.click((q[0]! + q[4]!) / 2, (q[1]! + q[5]!) / 2);
 }
 async function buddyText(page: Page) {
-  const { cdp, node } = await buddyNode(page, 'ClickPilot quick ask');
+  const { cdp, node } = await buddyNode(page, 'Klicko quick ask');
   await cdp.detach(); return walk(node).filter((child) => child.nodeName === '#text').map((child) => child.nodeValue).join(' ');
 }
 async function askBuddy(page: Page, question: string) {
-  await clickBuddy(page, 'Ask ClickPilot');
+  await clickBuddy(page, 'Ask Klicko');
   const { cdp, node } = await buddyNode(page, 'clickpilot-ask');
   await cdp.send('DOM.focus', { nodeId: node.nodeId }); await cdp.detach();
   await page.keyboard.type(question); await page.keyboard.press('Enter');
@@ -103,7 +103,7 @@ test('buddy opens locally, shares one answer with the sidebar, and survives side
   const { context, page, extensionId } = await setup();
   try {
     expect(await page.locator('#clickpilot-buddy').evaluate((host) => host.shadowRoot)).toBeNull();
-    await clickBuddy(page, 'Ask ClickPilot'); expect(requests).toHaveLength(0);
+    await clickBuddy(page, 'Ask Klicko'); expect(requests).toHaveLength(0);
     await page.keyboard.press('Escape'); expect(requests).toHaveLength(0);
     await askBuddy(page, 'What does Settings do?');
     await expect.poll(() => buddyText(page)).toContain('Settings controls your preferences.');
@@ -112,7 +112,7 @@ test('buddy opens locally, shares one answer with the sidebar, and survives side
     await expect(panel.getByRole('log', { name: 'Conversation' })).toContainText('Settings controls your preferences.');
     expect(requests).toHaveLength(1);
     await panel.close(); await page.bringToFront();
-    await clickBuddy(page, 'Ask ClickPilot'); // collapse
+    await clickBuddy(page, 'Ask Klicko'); // collapse
     await askBuddy(page, 'Where are the preferences?');
     await expect.poll(() => requests.length).toBe(2);
     await page.screenshot({ path: '/tmp/clickpilot-ux3-buddy-answer.png' });
@@ -128,7 +128,7 @@ test('Stop and consent withdrawal clear recovery and reject a late provider repl
     await expect.poll(async () => Object.keys(await recoveryRecords(panel)).length).toBe(0);
     release?.(); await expect.poll(() => buddyText(page)).toContain('Guidance stopped');
     await expect(panel.getByRole('log', { name: 'Conversation' })).not.toContainText('Settings controls your preferences.');
-    mode = 'answer'; await clickBuddy(page, 'Ask ClickPilot'); await askBuddy(page, 'Open settings');
+    mode = 'answer'; await clickBuddy(page, 'Ask Klicko'); await askBuddy(page, 'Open settings');
     await expect.poll(() => requests.length).toBe(2);
     await panel.evaluate(async () => {
       const api = (globalThis as unknown as { chrome: { storage: { local: { set: (v: unknown) => Promise<void> } } } }).chrome;
@@ -181,14 +181,14 @@ test('full navigation keeps one original-goal task; cross-origin and other tabs 
 test('no sharing without consent; drag, hide and popup interactions leave website controls usable', async () => {
   const { context, page } = await setup('guidance.html', false);
   try {
-    await clickBuddy(page, 'Ask ClickPilot');
+    await clickBuddy(page, 'Ask Klicko');
     await expect.poll(() => buddyText(page)).toContain('Webpage sharing is off');
     await page.keyboard.press('Escape');
-    const { cdp, node } = await buddyNode(page, 'Ask ClickPilot');
+    const { cdp, node } = await buddyNode(page, 'Ask Klicko');
     const { model } = await cdp.send('DOM.getBoxModel', { nodeId: node.nodeId }); await cdp.detach();
     await page.mouse.move(model.border[0]! + 20, model.border[1]! + 20); await page.mouse.down();
     await page.mouse.move(24, 80, { steps: 8 }); await page.mouse.up();
-    await clickBuddy(page, 'Ask ClickPilot'); await clickBuddy(page, 'Hide ClickPilot');
+    await clickBuddy(page, 'Ask Klicko'); await clickBuddy(page, 'Hide Klicko');
     await page.locator('#primary').click(); await expect(page.locator('#counter')).toHaveText('Clicks: 1');
     expect(requests).toHaveLength(0);
   } finally { await context.close(); }
@@ -198,7 +198,7 @@ test('selected-text assistance still explains through the shared sidebar without
   const { context, page, extensionId } = await setup('text.html');
   try {
     await page.locator('#passage').click({ clickCount: 3 });
-    await page.getByRole('button', { name: 'Ask ClickPilot', exact: true }).click();
+    await page.getByRole('button', { name: 'Ask Klicko', exact: true }).click();
     await page.getByLabel('Question about this passage').fill('Explain this passage.');
     await page.getByRole('button', { name: 'Ask', exact: true }).click();
     const panel = await openPanel(page, extensionId);
@@ -222,13 +222,13 @@ test('packaged Rive works on a strict-CSP page with attention, task expressions 
   try {
     await expect.poll(async () => (await buddyCharacter(page)).ready).toBe('true');
     await expect.poll(async () => (await buddyCharacter(page)).expression).toBe('Idle');
-    const { cdp, node } = await buddyNode(page, 'Ask ClickPilot');
+    const { cdp, node } = await buddyNode(page, 'Ask Klicko');
     const { model } = await cdp.send('DOM.getBoxModel', { nodeId: node.nodeId }); await cdp.detach();
     await page.mouse.move((model.border[0]! + model.border[4]!) / 2, (model.border[1]! + model.border[5]!) / 2);
     await expect.poll(async () => (await buddyCharacter(page)).expression).toBe('Happy');
     await page.mouse.move(10, 10);
     await expect.poll(async () => (await buddyCharacter(page)).expression).toBe('Idle');
-    await clickBuddy(page, 'Ask ClickPilot');
+    await clickBuddy(page, 'Ask Klicko');
     await expect.poll(async () => (await buddyCharacter(page)).expression).toBe('Surprised');
     await page.keyboard.type('Where are preferences?');
     await expect.poll(async () => (await buddyCharacter(page)).expression).toBe('Listening');
@@ -312,7 +312,7 @@ test('global ON covers existing and new tabs; independent goals survive worker r
     await stopExtensionWorker(second, extensionId);
     await expect.poll(() => buddyText(second)).toContain('ready to resume');
     await second.locator('#passage').click({ clickCount: 3 });
-    await expect(second.getByRole('button', { name: 'Ask ClickPilot', exact: true })).toBeVisible();
+    await expect(second.getByRole('button', { name: 'Ask Klicko', exact: true })).toBeVisible();
     expect(requests).toHaveLength(2);
     await activateToolbar(second, extensionId);
     for (const page of [first, second, third]) await expect(page.locator('#clickpilot-buddy, #clickpilot-text, #clickpilot-overlay')).toHaveCount(0);
@@ -346,7 +346,7 @@ test('an unsent selected-text draft survives worker restart locally and still re
   const { context, page, extensionId } = await setup('text.html');
   try {
     await page.locator('#passage').click({ clickCount: 3 });
-    await page.getByRole('button', { name: 'Ask ClickPilot', exact: true }).click();
+    await page.getByRole('button', { name: 'Ask Klicko', exact: true }).click();
     await page.getByLabel('Question about this passage').fill('Explain this public passage');
     await stopExtensionWorker(page, extensionId);
     await expect.poll(async () => {
@@ -363,15 +363,15 @@ test('an unsent selected-text draft survives worker restart locally and still re
 test('denied optional permission explains current-tab scope and does not activate a second tab', async () => {
   const { context, page } = await setup('text.html', false);
   try {
-    await clickBuddy(page, 'Ask ClickPilot');
+    await clickBuddy(page, 'Ask Klicko');
     await expect.poll(() => buddyText(page)).toContain('All-site access was not granted');
     const second = await context.newPage(); await second.goto('http://127.0.0.1:4173/guidance.html');
     await expect(second.locator('#clickpilot-buddy')).toHaveCount(0);
     await second.close(); await page.bringToFront();
     await page.keyboard.press('Escape');
     await page.locator('#passage').click({ clickCount: 3 });
-    await expect(page.getByRole('button', { name: 'Ask ClickPilot', exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Ask ClickPilot', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Ask Klicko', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Ask Klicko', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Ask', exact: true })).toBeDisabled();
     expect(requests).toHaveLength(0);
   } finally { await context.close(); }
@@ -384,13 +384,13 @@ test('selection remains available after guidance and Stop with no sidebar or imp
     await expect.poll(() => buddyText(page)).toContain('Settings controls');
     await page.keyboard.press('Escape');
     await page.locator('#passage').click({ clickCount: 3 });
-    await expect(page.getByRole('button', { name: 'Ask ClickPilot', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Ask Klicko', exact: true })).toBeVisible();
     expect(requests).toHaveLength(1);
-    await clickBuddy(page, 'Ask ClickPilot');
+    await clickBuddy(page, 'Ask Klicko');
     await clickBuddy(page, 'Stop');
     await page.keyboard.press('Escape');
     await page.locator('#passage').click({ clickCount: 3 });
-    await expect(page.getByRole('button', { name: 'Ask ClickPilot', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Ask Klicko', exact: true })).toBeVisible();
     expect(requests).toHaveLength(1);
   } finally { await context.close(); }
 });

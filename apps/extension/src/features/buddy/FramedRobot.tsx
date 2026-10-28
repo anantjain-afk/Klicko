@@ -62,7 +62,7 @@ export function FramedRobot(props: RobotProps) {
     animate={{ translateY: float ? [0, -3, 0] : 0 }}
     transition={float ? { duration: 5, repeat: Infinity, ease: 'easeInOut' } : { duration: 0 }}>
     {!ready && <Companion className="robot-fallback" />}
-    <iframe ref={iframe} src={`${browser.runtime.getURL('/robot.html')}#${token}`} title="ClickPilot character"
+    <iframe ref={iframe} src={`${browser.runtime.getURL('/robot.html')}#${token}`} title="Klicko character"
       tabIndex={-1} aria-hidden="true" referrerPolicy="no-referrer" onLoad={connect}
       className="robot-canvas" style={{ border: 0, pointerEvents: 'none', visibility: ready ? 'visible' : 'hidden' }} />
   </motion.span>;

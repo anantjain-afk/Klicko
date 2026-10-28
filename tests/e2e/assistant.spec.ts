@@ -518,7 +518,7 @@ test('MOCK API: 6B forced worker loss preserves live-panel goal without replayin
     expect(workerTarget).toBeDefined();
     await cdp.send('Target.closeTarget', { targetId: workerTarget!.targetId });
     await cdp.detach();
-    await expect(panel.locator('.guidance-state')).toContainText(/ClickPilot is reconnecting|connected again/);
+    await expect(panel.locator('.guidance-state')).toContainText(/Klicko is reconnecting|connected again/);
     finish(); outcome = 'workflow';
     await expect(page.locator('#clickpilot-overlay')).toHaveCount(0);
     await page.waitForTimeout(1000); expect(requests).toHaveLength(1);

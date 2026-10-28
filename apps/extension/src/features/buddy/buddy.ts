@@ -45,12 +45,12 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
   let popupAnimation: ReturnType<typeof animate> | undefined;
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   const launcher = document.createElement('button'); launcher.className = 'launcher'; launcher.type = 'button';
-  launcher.setAttribute('aria-label', 'Ask ClickPilot'); launcher.title = 'Ask ClickPilot · Drag to move · Alt+arrow keys to reposition · Home to reset';
+  launcher.setAttribute('aria-label', 'Ask Klicko'); launcher.title = 'Ask Klicko · Drag to move · Alt+arrow keys to reposition · Home to reset';
   const avatar = document.createElement('span'); avatar.className = 'companion-avatar';
   avatar.id = 'clickpilot-companion';
   avatar.setAttribute('aria-hidden', 'true'); avatar.append(createCompanion()); launcher.append(avatar);
   const popup = document.createElement('section'); popup.className = 'popup'; popup.hidden = true;
-  popup.id = 'clickpilot-quick-ask'; popup.setAttribute('role', 'region'); popup.setAttribute('aria-label', 'ClickPilot quick ask');
+  popup.id = 'clickpilot-quick-ask'; popup.setAttribute('role', 'region'); popup.setAttribute('aria-label', 'Klicko quick ask');
   launcher.setAttribute('aria-controls', popup.id); launcher.setAttribute('aria-expanded', 'false');
   function icon(path: string) {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('viewBox', '0 0 24 24');
@@ -64,12 +64,12 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
     element.addEventListener('click', (event) => { if (event.isTrusted) action(); }); return element;
   }
   const heading = document.createElement('div'); heading.className = 'heading';
-  const name = document.createElement('span'); name.textContent = 'ClickPilot'; name.className = 'name';
+  const name = document.createElement('span'); name.textContent = 'Klicko'; name.className = 'name';
   const tools = document.createElement('div'); tools.className = 'tools';
   const openSidebar = button('Open sidebar', () => openPanel(false), 'icon'); openSidebar.replaceChildren(icon('M14 4h6v6m0-6L10 14M10 4H4v16h16v-6'));
   const close = button('Close ask card', () => { playSound('clicky-text-close'); expanded = false; render(); launcher.focus({ preventScroll: true }); }, 'icon');
   close.replaceChildren(icon('m6 6 12 12M18 6 6 18'));
-  const hide = button('Hide ClickPilot', () => { playSound('agent-close'); command('hide'); visible = false; launchSoundArmed = true; render(); }, 'settings');
+  const hide = button('Hide Klicko', () => { playSound('agent-close'); command('hide'); visible = false; launchSoundArmed = true; render(); }, 'settings');
   tools.append(openSidebar, close); heading.append(name, tools);
   const greeting = document.createElement('h2'); greeting.className = 'greeting'; greeting.textContent = 'What would you like help with?';
   const reply = document.createElement('p'); reply.className = 'reply';
@@ -77,7 +77,7 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
   const status = document.createElement('p'); status.className = 'status'; status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
   const form = document.createElement('form');
   const label = document.createElement('label'); label.className = 'sr'; label.htmlFor = 'clickpilot-ask'; label.textContent = 'Your question';
-  const input = document.createElement('textarea'); input.id = label.htmlFor; input.placeholder = 'Ask ClickPilot…'; input.maxLength = 240; input.rows = 2; input.autocomplete = 'off';
+  const input = document.createElement('textarea'); input.id = label.htmlFor; input.placeholder = 'Ask Klicko…'; input.maxLength = 240; input.rows = 2; input.autocomplete = 'off';
   input.addEventListener('input', () => { draft = input.value; render(); });
   input.addEventListener('focus', () => render());
   input.addEventListener('blur', () => render());

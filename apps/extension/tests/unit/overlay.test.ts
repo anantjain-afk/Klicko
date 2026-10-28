@@ -84,7 +84,7 @@ describe('safe development highlight diagnostics', () => {
   it('reports the failed hit-test probe without DOM objects or sensitive content', () => {
     const invalidated = vi.fn();
     expect(showOverlay(target, 'PRIVATE-INSTRUCTION', () => true, invalidated)).toBeNull();
-    expect(console.debug).toHaveBeenCalledExactlyOnceWith('[ClickPilot highlight]', { reason: 'hit_test_failed', probe: 'center' });
+    expect(console.debug).toHaveBeenCalledExactlyOnceWith('[Klicko highlight]', { reason: 'hit_test_failed', probe: 'center' });
     expect(invalidated).not.toHaveBeenCalled();
     expect(document.querySelector('#clickpilot-overlay')).toBeNull();
   });
@@ -92,9 +92,9 @@ describe('safe development highlight diagnostics', () => {
   it('identifies detached references and identity failures before hit testing', () => {
     target.remove();
     expect(showOverlay(target, 'Use it', () => true, vi.fn())).toBeNull();
-    expect(console.debug).toHaveBeenLastCalledWith('[ClickPilot highlight]', { reason: 'detached' });
+    expect(console.debug).toHaveBeenLastCalledWith('[Klicko highlight]', { reason: 'detached' });
     expect(showOverlay(target, 'Use it', () => false, vi.fn())).toBeNull();
-    expect(console.debug).toHaveBeenLastCalledWith('[ClickPilot highlight]', { reason: 'identity_mismatch' });
+    expect(console.debug).toHaveBeenLastCalledWith('[Klicko highlight]', { reason: 'identity_mismatch' });
     expect(hit).not.toHaveBeenCalled();
   });
 });

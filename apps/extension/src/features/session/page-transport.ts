@@ -24,9 +24,9 @@ export function createPageTransport(tabId: number, textEvent: (value: unknown) =
 
   async function permittedPage() {
     const tab = await browser.tabs.get(tabId);
-    if (tab?.url && isSensitivePage(tab.url)) throw new Error('For your privacy, ClickPilot is unavailable on this page.');
+    if (tab?.url && isSensitivePage(tab.url)) throw new Error('For your privacy, Klicko is unavailable on this page.');
     if (tab?.id !== tabId || !tab.url || !await tabAccess.allows(tabId, tab.url)) {
-      throw new Error('Click the ClickPilot toolbar icon on this public page, then try again.');
+      throw new Error('Click the Klicko toolbar icon on this public page, then try again.');
     }
     return tab;
   }

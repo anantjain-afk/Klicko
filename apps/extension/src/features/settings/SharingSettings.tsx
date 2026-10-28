@@ -29,7 +29,7 @@ export function SharingOnboarding({ sharing }: { sharing: Sharing }) {
   }
   return <section className="sharing-onboarding" aria-labelledby="onboarding-title">
     <h1 id="onboarding-title">A little help.<br />Your next move.</h1>
-    <p>Ask about a page or a selected passage. ClickPilot explains and points the way. You make every click.</p>
+    <p>Ask about a page or a selected passage. Klicko explains and points the way. You make every click.</p>
     <form onSubmit={submit}>
       <SharingChoices guidance={guidance} selectedText={selectedText} disabled={sharing.saving}
         onChange={(key, value) => { if (key === 'guidance') setGuidance(value); else setSelectedText(value); }} />

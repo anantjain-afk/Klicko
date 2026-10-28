@@ -49,10 +49,10 @@ async function setup(consent = true, activated = true) {
 }
 async function select(page: Page, selector = '#passage') {
   await page.locator(selector).click({ clickCount: 3 });
-  await expect(page.getByRole('button', { name: 'Ask ClickPilot', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Ask Klicko', exact: true })).toBeVisible();
 }
 async function compose(page: Page) {
-  await select(page); await page.getByRole('button', { name: 'Ask ClickPilot', exact: true }).click();
+  await select(page); await page.getByRole('button', { name: 'Ask Klicko', exact: true }).click();
   await page.getByLabel('Question about this passage').fill('Explain this passage.');
 }
 async function submit(page: Page) { await compose(page); await page.getByRole('button', { name: 'Ask', exact: true }).click(); }
@@ -64,7 +64,7 @@ test('selection completes before one bubble appears; focus preserves passage; on
     const bounds = (await page.locator('#passage').boundingBox())!;
     await page.mouse.move(bounds.x + 2, bounds.y + 12); await page.mouse.down(); await page.mouse.move(bounds.x + 260, bounds.y + 12, { steps: 8 });
     await page.waitForTimeout(180); await expect(page.locator('#clickpilot-text')).toHaveCount(0);
-    await page.mouse.up(); await expect(page.getByRole('button', { name: 'Ask ClickPilot', exact: true })).toBeVisible();
+    await page.mouse.up(); await expect(page.getByRole('button', { name: 'Ask Klicko', exact: true })).toBeVisible();
     await compose(page); expect(requests).toHaveLength(0);
     await expect(page.getByLabel('Question about this passage')).toBeFocused();
     await page.locator('#clickpilot-text form').evaluate((form: HTMLFormElement) => form.requestSubmit());
@@ -90,7 +90,7 @@ test('toolbar activation and specific text consent are required; Cancel and Esca
     await page.locator('#passage').click({ clickCount: 3 }); await page.waitForTimeout(250); await expect(page.locator('#clickpilot-text')).toHaveCount(0);
     await activateToolbar(page, extensionId); await panel.reload(); await page.bringToFront();
     await textAction(panel, 'text-enable'); await select(page);
-    await page.getByRole('button', { name: 'Ask ClickPilot', exact: true }).click();
+    await page.getByRole('button', { name: 'Ask Klicko', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Ask', exact: true })).toBeDisabled();
     await page.getByLabel('Question about this passage').press('Escape'); await expect(page.locator('#clickpilot-text')).toHaveCount(0);
     await setConsent(panel, 'text', true); await page.bringToFront();
@@ -106,8 +106,8 @@ test('script-only changes do not show a bubble; keyboard selection supports focu
     await page.evaluate(() => { const range = document.createRange(); range.selectNodeContents(document.querySelector('#passage')!); getSelection()!.removeAllRanges(); getSelection()!.addRange(range); });
     await page.waitForTimeout(250); await expect(page.locator('#clickpilot-text')).toHaveCount(0);
     await page.keyboard.press('Shift+ArrowLeft');
-    await expect(page.getByRole('button', { name: 'Ask ClickPilot', exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Ask ClickPilot', exact: true }).focus(); await page.keyboard.press('Enter');
+    await expect(page.getByRole('button', { name: 'Ask Klicko', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Ask Klicko', exact: true }).focus(); await page.keyboard.press('Enter');
     await expect(page.getByLabel('Question about this passage')).toBeFocused();
     await page.keyboard.type('Explain'); await page.keyboard.press('Enter'); await expect(reply(panel)).toContainText(detail);
   } finally { await context.close(); }
@@ -215,7 +215,7 @@ test('closing the sidebar leaves the explicit selected-text request and local re
 test('nested scroll and insufficient viewport space remove floating UI while the panel retains its answer', async () => {
   const { context, page, panel } = await setup();
   try {
-    await select(page, '#nested'); await page.getByRole('button', { name: 'Ask ClickPilot', exact: true }).click();
+    await select(page, '#nested'); await page.getByRole('button', { name: 'Ask Klicko', exact: true }).click();
     await page.getByLabel('Question about this passage').fill('Explain this sentence.'); await page.getByRole('button', { name: 'Ask', exact: true }).click();
     await expect(reply(panel)).toContainText(detail);
     await page.locator('#scrollbox').evaluate((element) => { element.scrollTop = 1000; });

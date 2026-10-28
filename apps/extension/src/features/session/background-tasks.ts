@@ -153,7 +153,7 @@ export function startBackgroundTasks() {
     }
     await browser.storage.session.set({ [GLOBAL_ACTIVATION_KEY]: enabled });
     await browser.action.setBadgeText({ text: enabled ? 'ON' : '' });
-    await browser.action.setTitle({ title: enabled ? 'Turn ClickPilot off on all tabs' : 'Turn ClickPilot on for all supported tabs' });
+    await browser.action.setTitle({ title: enabled ? 'Turn Klicko off on all tabs' : 'Turn Klicko on for all supported tabs' });
     const tabs = await browser.tabs.query({});
     for (const tab of tabs) {
       if (tab.id === undefined) continue;
@@ -224,13 +224,13 @@ export function startBackgroundTasks() {
     port.onMessage.addListener((value: unknown) => {
       if (!isRecord(value)) return;
       if (value.type === 'ATTACH' && Object.keys(value).every((key) => ['type', 'pageKey'].includes(key))) {
-        void attach(value).catch(() => post({ type: 'VIEW_ERROR', message: 'ClickPilot couldn’t connect. Try again.' })); return;
+        void attach(value).catch(() => post({ type: 'VIEW_ERROR', message: 'Klicko couldn’t connect. Try again.' })); return;
       }
       // Invoke Chrome's gesture-gated API before any await, storage read or probe.
       if (value.type === 'OPEN_SIDEBAR' && Object.keys(value).every((key) => ['type', 'settings'].includes(key))
         && (value.settings === undefined || typeof value.settings === 'boolean') && !panel && attached && boundTab !== undefined) {
         if (value.settings === true && port.sender!.tab!.windowId !== undefined) settingsIntents.add(port.sender!.tab!.windowId!);
-        void browser.sidePanel.open({ windowId: port.sender!.tab!.windowId }).catch(() => post({ type: 'VIEW_ERROR', message: 'Use the ClickPilot entry in Chrome’s side panel to open the conversation.' }));
+        void browser.sidePanel.open({ windowId: port.sender!.tab!.windowId }).catch(() => post({ type: 'VIEW_ERROR', message: 'Use the Klicko entry in Chrome’s side panel to open the conversation.' }));
         return;
       }
       if (isTaskCommand(value) && attached && boundTab !== undefined) {
@@ -244,8 +244,8 @@ export function startBackgroundTasks() {
         })().catch((error: unknown) => {
           const current = entry.task.snapshot();
           if (current.epoch === value.epoch && current.taskId === value.taskId) entry.task.error(error instanceof Error
-            && error.message === 'For your privacy, ClickPilot is unavailable on this page.' ? error.message
-            : 'Click the ClickPilot toolbar icon on this public page, then try again.');
+            && error.message === 'For your privacy, Klicko is unavailable on this page.' ? error.message
+            : 'Click the Klicko toolbar icon on this public page, then try again.');
         });
       }
       if (panel && isTrackPageRequest(value)) {
@@ -276,8 +276,8 @@ export function startBackgroundTasks() {
       await browser.action.setTitle({ title: 'All-site access was not granted. Current-tab activation is available on supported webpages; click to retry global mode.' });
       if (tab.id === undefined || !supportedPage(tab.url)) return;
       await tabAccess.activate(tab.id, tab.url);
-      void activateTab(tab.id, 'All-site access was not granted. ClickPilot works only on this tab. Use the toolbar to try global mode again.', false).catch(() => undefined);
-    }).catch(() => { void browser.action.setTitle({ title: 'ClickPilot could not change access. Try the toolbar again.' }); });
+      void activateTab(tab.id, 'All-site access was not granted. Klicko works only on this tab. Use the toolbar to try global mode again.', false).catch(() => undefined);
+    }).catch(() => { void browser.action.setTitle({ title: 'Klicko could not change access. Try the toolbar again.' }); });
   });
   browser.permissions.onRemoved.addListener(() => {
     activationQueue = activationQueue.then(async () => {

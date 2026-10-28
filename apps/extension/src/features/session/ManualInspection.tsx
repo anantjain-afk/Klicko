@@ -13,7 +13,7 @@ type ViewState =
 const ERROR_MESSAGES = {
   'no-tab': 'No active tab was found. Open a website and try again.',
   unsupported: 'This page cannot be inspected. Open a regular website.',
-  reactivate: 'Click the ClickPilot toolbar icon on this tab to allow inspection, then try again.',
+  reactivate: 'Click the Klicko toolbar icon on this tab to allow inspection, then try again.',
   changed: 'The page changed during inspection. Try again on the current tab.',
 };
 
@@ -80,7 +80,7 @@ export function ManualInspection({ session }: { session: ReturnType<typeof useGu
     }
     function onTabActivated() {
       clearInspection();
-      setView({ kind: 'error', message: 'Tab changed. Click the ClickPilot icon on this tab before inspecting.' });
+      setView({ kind: 'error', message: 'Tab changed. Click the Klicko icon on this tab before inspecting.' });
     }
     function onTabUpdated(tabId: number, change: { status?: string; url?: string }) {
       if (tabId !== observedTabId.current || (!change.url && change.status !== 'loading')) return;
@@ -137,7 +137,7 @@ export function ManualInspection({ session }: { session: ReturnType<typeof useGu
       setView({ kind: 'ready', snapshot: response.snapshot });
     } catch {
       if (currentRequestId === requestId.current) {
-        setView({ kind: 'error', message: 'Could not reach the extension. Reload ClickPilot and try again.' });
+        setView({ kind: 'error', message: 'Could not reach the extension. Reload Klicko and try again.' });
       }
     }
   }

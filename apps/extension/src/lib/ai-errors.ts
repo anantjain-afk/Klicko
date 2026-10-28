@@ -1,12 +1,12 @@
 import type { ErrorCode } from '@clickpilot/shared/guidance';
 
 export function aiServiceError(code: ErrorCode | 'connection' | 'invalid_reply'): Error {
-  let message = "ClickPilot couldn't connect. Try again.";
+  let message = "Klicko couldn't connect. Try again.";
   switch (code) {
     case 'invalid_reply':
-    case 'invalid_provider_response': message = "ClickPilot couldn't use that reply safely. Try again."; break;
+    case 'invalid_provider_response': message = "Klicko couldn't use that reply safely. Try again."; break;
     case 'rate_limited': message = 'The AI usage limit was reached. Wait before trying again.'; break;
-    case 'timeout': message = 'ClickPilot took too long to reply. Try again.'; break;
+    case 'timeout': message = 'Klicko took too long to reply. Try again.'; break;
     case 'cancelled': message = 'The request was cancelled.'; break;
     case 'service_disabled': message = 'AI assistance is turned off in your backend settings.'; break;
     case 'unsafe_context': message = 'This page or question may contain sensitive information. Try public content instead.'; break;

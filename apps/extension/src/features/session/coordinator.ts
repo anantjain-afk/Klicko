@@ -62,7 +62,7 @@ export function createTaskCoordinator(tabId: number, client: CoordinatorClient, 
   const guidance = createAssistantSession({
     ...client.guidance,
     checkpoint: async () => {
-      if (!await persist()) throw new Error('ClickPilot couldn’t save this task safely. Stop and try a public question again.');
+      if (!await persist()) throw new Error('Klicko couldn’t save this task safely. Stop and try a public question again.');
       return true;
     },
     endCheckpoint: () => { if (!initializing) void client.save(null).catch(() => { view.storageAvailable = false; publish(); }); },
@@ -150,7 +150,7 @@ export function createTaskCoordinator(tabId: number, client: CoordinatorClient, 
         case 'text-stop': view.textEnabled = false; text.stop(); saveFlags(); publish(); break;
         case 'hide':
           view.buddyVisible = false; view.textEnabled = false; text.stop();
-          if (guidance.isActive()) guidance.suspend('Buddy hidden. Continue from the sidebar or reactivate ClickPilot when ready.');
+          if (guidance.isActive()) guidance.suspend('Buddy hidden. Continue from the sidebar or reactivate Klicko when ready.');
           saveFlags(); publish(); break;
       }
     },
@@ -165,7 +165,7 @@ export function createTaskCoordinator(tabId: number, client: CoordinatorClient, 
     },
     accessLost() {
       view.buddyVisible = false; view.textEnabled = false; text.invalidate();
-      if (guidance.isActive()) guidance.suspend('Website access was lost. Activate ClickPilot on a supported page, then Continue.');
+      if (guidance.isActive()) guidance.suspend('Website access was lost. Activate Klicko on a supported page, then Continue.');
       saveFlags(); publish();
     },
     reconnectText() { if (view.textEnabled) text.enable(); },

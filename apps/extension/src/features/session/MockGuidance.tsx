@@ -58,7 +58,7 @@ export function MockGuidance({ session }: { session: ReturnType<typeof useGuidan
       </section>
       <details className="mock-examples" open>
         <summary>Fixture and supported tasks</summary>
-        <p>Open <code>http://127.0.0.1:4173/guidance.html</code> and click the ClickPilot toolbar icon on that tab.</p>
+        <p>Open <code>http://127.0.0.1:4173/guidance.html</code> and click the Klicko toolbar icon on that tab.</p>
         <p>Try “find primary target”, “find profile”, “open help”, “find navigation settings”, or “find dialog settings”. “Find settings” asks you to choose between the two controls.</p>
       </details>
       <details className="mock-scenarios">

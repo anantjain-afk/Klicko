@@ -46,7 +46,7 @@ export function createTextSession(client: TextClient, change: (state: TextState)
       const value = await client.ask(run.command, run.abort.signal);
       if (active !== run) return;
       const response = validateTextResponse(value, run.command);
-      if (!response) throw new Error('ClickPilot couldn’t use that reply safely. Select the passage and try again.');
+      if (!response) throw new Error('Klicko couldn’t use that reply safely. Select the passage and try again.');
       active = null;
       set({ kind: 'answered', message: 'Response about your selected passage.', question: command.question, result: response.result });
     } catch (error) {
@@ -75,16 +75,16 @@ export function createTextSession(client: TextClient, change: (state: TextState)
         if ('selectionId' in value && TextIdentitySchema.safeParse({ sessionId, pageKey: value.pageKey, selectionId: value.selectionId }).success) {
           selectionId = String(value.selectionId);
         }
-        if (state.kind === 'idle' || state.kind === 'stopped' || (state.kind === 'error' && !state.question)) set({ kind: 'ready', message: 'Select public webpage text, then choose Ask ClickPilot.' });
+        if (state.kind === 'idle' || state.kind === 'stopped' || (state.kind === 'error' && !state.question)) set({ kind: 'ready', message: 'Select public webpage text, then choose Ask Klicko.' });
       }
       if (value.type === 'TEXT_ARM_ERROR' && enabled) set({ kind: 'error', message: 'reason' in value && value.reason === 'privacy'
         ? 'For your privacy, text help is unavailable on this page. Try a public page.'
-        : 'Click the ClickPilot toolbar icon on a public page to enable text help.' });
+        : 'Click the Klicko toolbar icon on a public page to enable text help.' });
     },
     onPageEvent(value: unknown, tabId: number) {
       if (!enabled || !isTextEvent(value) || value.sessionId !== sessionId || page?.tabId !== tabId || page.pageKey !== value.pageKey) return;
       if (value.type === 'TEXT_SELECTED') {
-        clear('Selected passage ready. Choose Ask ClickPilot on the page.', 'selected'); selectionId = value.selectionId; return;
+        clear('Selected passage ready. Choose Ask Klicko on the page.', 'selected'); selectionId = value.selectionId; return;
       }
       if (value.selectionId !== selectionId) return;
       if (value.type === 'TEXT_OPENED') { client.interruptGuidance(); set({ kind: 'composing', message: 'Type your question beside the selected passage.' }); }
@@ -113,7 +113,7 @@ export function createTextSession(client: TextClient, change: (state: TextState)
       if (state.kind === 'answered') return;
       set({ ...state, kind: state.question ? 'error' : 'idle', canRetry: false, message: state.question
         ? 'The connection was interrupted. Select the passage again to retry your question.'
-        : 'ClickPilot is reconnecting. Your sharing choices are unchanged.' });
+        : 'Klicko is reconnecting. Your sharing choices are unchanged.' });
     },
     retry() { if (state.kind === 'error' && retryCommand) void submit(retryCommand); },
     dispose() { enabled = false; cancelRequest(); retryCommand = null; page = null; post({ type: 'STOP_TEXT' }); },
