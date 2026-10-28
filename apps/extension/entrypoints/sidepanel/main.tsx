@@ -62,8 +62,8 @@ function App() {
     if (next === 'chat') changeMode('assistant');
   }
   function newChat() {
-    session.textController.current?.stop();
-    if (session.controller.current?.newChat) session.controller.current.newChat(); else session.controller.current?.stop();
+    if (session.controller.current?.newChat) session.controller.current.newChat();
+    else { session.textController.current?.stop(); session.controller.current?.stop(); }
     setConversationKey((value) => value + 1); openView('chat');
   }
 

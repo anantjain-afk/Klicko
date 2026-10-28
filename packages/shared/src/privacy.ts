@@ -4,7 +4,7 @@ export interface ProviderContext {
   userGoal: string;
   taskContext: TaskContext;
   page: { origin: string };
-  elements: { id: string; role: string; name: string; context: string }[];
+  elements: { id: string; role: string; name: string; context: string; expanded?: boolean }[];
 }
 
 export function containsSensitiveText(text: string): boolean {
@@ -19,12 +19,13 @@ function cleanText(text: string): string {
   return text.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-export function eligibleElements(elements: { id: string; role: string; name: string; context: string; disabled: boolean }[]): ProviderContext['elements'] {
+export function eligibleElements(elements: { id: string; role: string; name: string; context: string; disabled: boolean; expanded?: boolean }[]): ProviderContext['elements'] {
   return elements.flatMap((element) => {
     const name = cleanText(element.name);
     const context = cleanText(element.context);
     return element.disabled || !name || containsSensitiveText(name) || containsSensitiveText(context)
-      ? [] : [{ id: element.id, role: element.role, name, context }];
+      ? [] : [{ id: element.id, role: element.role, name, context,
+        ...(typeof element.expanded === 'boolean' ? { expanded: element.expanded } : {}) }];
   });
 }
 

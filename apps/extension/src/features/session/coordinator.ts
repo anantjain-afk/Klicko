@@ -61,10 +61,6 @@ export function createTaskCoordinator(tabId: number, client: CoordinatorClient, 
   }
   const guidance = createAssistantSession({
     ...client.guidance,
-    inspect: (...args) => {
-      view.textEnabled = false; text.stop(); saveFlags();
-      return client.guidance.inspect(...args);
-    },
     checkpoint: async () => {
       if (!await persist()) throw new Error('ClickPilot couldn’t save this task safely. Stop and try a public question again.');
       return true;
@@ -110,7 +106,8 @@ export function createTaskCoordinator(tabId: number, client: CoordinatorClient, 
 
   function stop(clearMessages = false) {
     view.taskId = crypto.randomUUID(); view.recovered = false; view.goal = ''; lastReply = '';
-    view.textEnabled = false; guidance.stop(); text.stop();
+    guidance.stop(); text.stop();
+    if (view.textEnabled) text.enable();
     if (clearMessages) view.messages = [];
     saveFlags(); publish();
   }
@@ -134,13 +131,13 @@ export function createTaskCoordinator(tabId: number, client: CoordinatorClient, 
           }
           view.taskId = crypto.randomUUID(); view.source = 'guidance'; view.goal = command.goal.trim();
           view.recovered = false; expiresAt = Date.now() + TASK_TTL_MS; lastReply = '';
-          view.textEnabled = false; text.stop(); saveFlags();
+          text.stop(); if (view.textEnabled) text.enable();
           append('user', view.goal, 'guidance');
           void guidance.start(view.goal); break;
         case 'stop': case 'new-chat': stop(command.action === 'new-chat'); break;
         case 'done':
           view.taskId = crypto.randomUUID(); guidance.confirmComplete(); text.stop();
-          view.goal = ''; lastReply = ''; view.textEnabled = false; saveFlags(); publish(); break;
+          view.goal = ''; lastReply = ''; if (view.textEnabled) text.enable(); saveFlags(); publish(); break;
         case 'retry':
           view.recovered = false;
           if (view.source === 'text') text.retry();
@@ -157,7 +154,20 @@ export function createTaskCoordinator(tabId: number, client: CoordinatorClient, 
           saveFlags(); publish(); break;
       }
     },
-    activate() { view.buddyVisible = true; view.textEnabled = true; saveFlags(); publish(); },
+    activate(notice?: string) {
+      view.buddyVisible = true; view.textEnabled = true;
+      view.activationNotice = notice;
+      saveFlags(); publish();
+    },
+    deactivate() {
+      view.buddyVisible = false; view.textEnabled = false;
+      stop();
+    },
+    accessLost() {
+      view.buddyVisible = false; view.textEnabled = false; text.invalidate();
+      if (guidance.isActive()) guidance.suspend('Website access was lost. Activate ClickPilot on a supported page, then Continue.');
+      saveFlags(); publish();
+    },
     reconnectText() { if (view.textEnabled) text.enable(); },
     textPortMessage: (value: unknown) => { if (!disposed) text.onPortMessage(value); },
     pageEvent(value: unknown, senderTab: number) {
@@ -170,7 +180,7 @@ export function createTaskCoordinator(tabId: number, client: CoordinatorClient, 
     },
     resumeNavigation: () => { if (!disposed && !expired()) void guidance.resumeNavigation(); },
     pauseForTabChange() {
-      text.invalidate();
+      text.pauseSelection();
       if (guidance.isActive()) guidance.suspend('Tab changed. Return to this task’s tab, then Continue.');
     },
     preferences(next: AiPreferences) {
@@ -178,8 +188,9 @@ export function createTaskCoordinator(tabId: number, client: CoordinatorClient, 
       const revokedText = preferences.selectedText && !next.selectedText;
       preferences = next; view.guidanceConsent = next.guidance; view.textConsent = next.selectedText;
       if (revokedGuidance) { view.taskId = crypto.randomUUID(); guidance.stop(); view.goal = ''; lastReply = ''; }
-      if (revokedText) { view.textEnabled = false; text.stop(); saveFlags(); }
+      if (revokedText) text.stop();
       text.setConsent(next.selectedText); publish();
+      if (view.textEnabled && revokedText) text.enable();
     },
     dispose() { stop(); disposed = true; text.dispose(); guidance.dispose(); listeners.clear(); },
   };

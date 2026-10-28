@@ -175,12 +175,12 @@ for (const kind of ['hostile', 'clarification', 'unsupported', 'invalid', 'stale
       expect(await page.evaluate(() => 'bad' in window)).toBe(false);
       expect(await panel.evaluate(() => 'bad' in window)).toBe(false);
       await expect(page.locator('#clickpilot-text img, #clickpilot-text script')).toHaveCount(0);
-      if (kind === 'error') { mode = 'explanation'; await panel.getByRole('button', { name: 'Retry explanation' }).click(); await expect(reply(panel)).toContainText(detail); }
+      if (kind === 'error') { mode = 'explanation'; await panel.getByRole('button', { name: 'Retry', exact: true }).click(); await expect(reply(panel)).toContainText(detail); }
     } finally { await context.close(); }
   });
 }
 
-for (const action of ['cancel', 'stop', 'withdraw', 'new-selection', 'navigate', 'spa', 'tab', 'close', 'detach']) {
+for (const action of ['cancel', 'stop', 'withdraw', 'new-selection', 'navigate', 'spa', 'tab', 'detach']) {
   test(`pending text cancellation and cleanup: ${action}`, async () => {
     const { context, page, panel } = await setup();
     try {
@@ -192,15 +192,25 @@ for (const action of ['cancel', 'stop', 'withdraw', 'new-selection', 'navigate',
       if (action === 'navigate') await page.goto('http://127.0.0.1:4173/second.html');
       if (action === 'spa') await page.evaluate(() => history.pushState({}, '', '/text.html?route=new'));
       if (action === 'tab') { const other = await context.newPage(); await other.goto('http://127.0.0.1:4173/second.html'); }
-      if (action === 'close') await panel.close();
       if (action === 'detach') await page.locator('#passage').evaluate((p) => p.remove());
       if (action !== 'new-selection') await expect(page.locator('#clickpilot-text')).toHaveCount(0);
       release?.(); await page.waitForTimeout(300);
-      if (action !== 'close') await expect(reply(panel)).not.toContainText(detail);
+      await expect(reply(panel)).not.toContainText(detail);
       expect(requests).toHaveLength(1);
     } finally { release?.(); await context.close(); }
   });
 }
+
+test('closing the sidebar leaves the explicit selected-text request and local reply available', async () => {
+  const { context, page, panel } = await setup();
+  try {
+    mode = 'delayed'; await submit(page); await expect.poll(() => requests.length).toBe(1);
+    await panel.close(); await page.bringToFront();
+    release?.();
+    await expect(page.locator('#clickpilot-text')).toContainText(quick);
+    expect(requests).toHaveLength(1);
+  } finally { release?.(); await context.close(); }
+});
 
 test('nested scroll and insufficient viewport space remove floating UI while the panel retains its answer', async () => {
   const { context, page, panel } = await setup();

@@ -35,6 +35,9 @@ export default defineContentScript({
     let removeOverlay: (() => void) | null = null;
     let removeClickListener: (() => void) | null = null;
     let activeTarget: Element | null = null;
+    let activationNavigation: ReturnType<typeof setInterval> | undefined;
+    let pageActive = false;
+    let activationRequest = 0;
     const buddy = createBuddy(() => pageKey, () => ctx.isValid, () => activeTarget?.isConnected ? activeTarget.getBoundingClientRect() : null);
 
     let settling: AbortController | undefined;
@@ -42,7 +45,7 @@ export default defineContentScript({
     let stopObservation: (() => void) | undefined;
     const textBubble = createTextBubble(() => pageKey, () => ctx.isValid, (event) => {
       void browser.runtime.sendMessage(event).catch(() => undefined);
-    });
+    }, (rect) => buddy.avoidSelection(rect));
 
     function clearOverlay() {
       activeTarget = null;
@@ -77,15 +80,40 @@ export default defineContentScript({
       clear();
       observedUrl = location.href;
       pageKey = crypto.randomUUID();
+      textBubble.disable();
       buddy.pageChanged();
     }
 
     function handleMessage(message: unknown, sender: { id?: string }, sendResponse: (response: PageSnapshot | OverlayResponse | { ok: boolean; pageKey?: string }) => void) {
       if (ctx.isValid && sender.id === browser.runtime.id && message && typeof message === 'object' && 'type' in message) {
-        if (message.type === 'SHOW_BUDDY') { checkNavigation(); buddy.show(); sendResponse({ ok: true }); return; }
+        if (message.type === 'SHOW_BUDDY' && 'globalOnly' in message && typeof message.globalOnly === 'boolean') {
+          checkNavigation();
+          const attempt = ++activationRequest;
+          void browser.runtime.sendMessage({ type: 'CHECK_ACTIVATION', globalOnly: message.globalOnly }).then((result: unknown) => {
+            const allowed = result && typeof result === 'object' && 'allowed' in result && result.allowed === true;
+            if (!ctx.isValid || attempt !== activationRequest || !allowed) { sendResponse({ ok: false }); return; }
+            pageActive = true; buddy.show();
+            activationNavigation ??= setInterval(checkNavigation, 250);
+            sendResponse({ ok: true });
+          }).catch(() => sendResponse({ ok: false }));
+          return true;
+        }
+        if (message.type === 'DEACTIVATE_PAGE' && 'globalOnly' in message && typeof message.globalOnly === 'boolean') {
+          void browser.runtime.sendMessage({ type: 'CHECK_ACTIVATION', globalOnly: message.globalOnly }).catch(() => null).then((result: unknown) => {
+            if (result && typeof result === 'object' && 'allowed' in result && result.allowed === true) {
+              sendResponse({ ok: false }); return;
+            }
+            ++activationRequest; pageActive = false;
+            clear(); textBubble.disable(); buddy.hide();
+            clearInterval(activationNavigation); activationNavigation = undefined;
+            sendResponse({ ok: true });
+          });
+          return true;
+        }
         if (message.type === 'PAGE_IDENTITY') { checkNavigation(); sendResponse({ ok: true, pageKey }); return; }
       }
       if (ctx.isValid && sender.id === browser.runtime.id && isTextPageCommand(message)) {
+        if (message.type === 'ENABLE_TEXT' && !pageActive) { sendResponse({ ok: false }); return; }
         checkNavigation(); sendResponse(textBubble.handle(message)); return;
       }
       if (!ctx.isValid || sender.id !== browser.runtime.id || !isContentRequest(message)) return;
@@ -200,22 +228,35 @@ export default defineContentScript({
       port.onDisconnect.addListener(() => {
         if (pageConnection !== port) return;
         pageConnection = undefined;
-        clear(); textBubble.suspend();
+        // Worker suspension invalidates guidance, but local selection stays available.
+        clear();
       });
       ctx.onInvalidated(() => port.disconnect());
     }
 
-    const onPageHide = () => { notify('PAGE_NAVIGATED'); clear(); textBubble.disable(); };
+    const onPageHide = () => {
+      ++activationRequest; pageActive = false;
+      notify('PAGE_NAVIGATED'); clear(); textBubble.disable(); buddy.hide();
+      clearInterval(activationNavigation); activationNavigation = undefined;
+    };
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.isTrusted && event.persisted && ctx.isValid) {
+        void browser.runtime.sendMessage({ type: 'PAGE_RESTORED', pageKey }).catch(() => undefined);
+      }
+    };
     window.addEventListener('pagehide', onPageHide);
+    window.addEventListener('pageshow', onPageShow);
     browser.runtime.onMessage.addListener(handleMessage);
     browser.runtime.onConnect.addListener(onConnect);
     const state: ObserverState = {
       isValid: () => ctx.isValid,
       dispose() {
         clear();
+        clearInterval(activationNavigation);
         buddy.dispose();
         textBubble.dispose();
         window.removeEventListener('pagehide', onPageHide);
+        window.removeEventListener('pageshow', onPageShow);
         if (ctx.isValid) {
           browser.runtime.onMessage.removeListener(handleMessage);
           browser.runtime.onConnect.removeListener(onConnect);

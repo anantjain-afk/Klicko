@@ -6,6 +6,7 @@ const CONTROL_SELECTOR = [
   '[role="radio"]', '[role="tab"]', '[role="menuitem"]',
   '[role="menuitemcheckbox"]', '[role="menuitemradio"]', '[role="option"]',
   '[role="switch"]', '[role="combobox"]',
+  '[tabindex="0"]', '[role="menu"] [tabindex="-1"]', '[role="listbox"] [tabindex="-1"]',
 ].join(', ');
 
 const ALLOWED_ROLES = new Set([
@@ -141,6 +142,8 @@ export function collectElements(doc: Document): { elements: ObservedElement[]; r
       name: accessibleName(element),
       context: contextFor(element),
       disabled: element.matches(':disabled') || element.getAttribute('aria-disabled') === 'true',
+      ...(['true', 'false'].includes(element.getAttribute('aria-expanded') ?? '')
+        ? { expanded: element.getAttribute('aria-expanded') === 'true' } : {}),
       rect: {
         x: Math.round(rect.x),
         y: Math.round(rect.y),

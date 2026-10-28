@@ -20,6 +20,15 @@ function watch(outcome?: { type: 'target_expanded' }) {
   const stop = observeAction(target, actionBaseline(document), null, outcome, current, observed);
   return { target, observed, current, stop };
 }
+it('observes newly visible keyboard controls in a custom popup on a crowded page', async () => {
+  document.querySelector('#noise')!.innerHTML = '<button>Background</button>'.repeat(155);
+  const { observed, stop } = watch();
+  document.querySelector('#portal')!.innerHTML = '<div role="menu"><custom-item tabindex="0">Switch account</custom-item></div>';
+  await vi.advanceTimersByTimeAsync(600);
+  expect(collectElements(document).elements.some(e => e.name === 'Switch account')).toBe(true);
+  expect(observed).toHaveBeenCalledWith({ changed: true, status: 'unverifiable' });
+  stop();
+});
 it('includes non-native menu roles, and accepts them at the API boundary', () => {
   open();
   const snapshot = collectElements(document);

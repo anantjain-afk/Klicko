@@ -85,7 +85,7 @@ export function AssistantPanel({ session, live, visible, onSettings }: {
       {showStatus && <p className={`chat-status${isError ? ' error' : ''}`} role={isError ? 'alert' : 'status'}>{status}</p>}
       {!connected && <p className="chat-status" aria-live="polite">Reconnecting… <button className="text-button" onClick={session.reconnect}>Reconnect</button></p>}
       {(canStop || canRetry || continuing || canComplete) && <div className="chat-actions">
-        {canStop && <button className="text-button" onClick={() => { textController.current?.stop(); controller.current?.stop(); }}>Stop</button>}
+        {canStop && <button className="text-button" onClick={() => { if (!live) textController.current?.stop(); controller.current?.stop(); }}>Stop</button>}
         {canRetry && <button className="text-button" disabled={!connected || !(isText ? session.textConsent : guidanceConsent)} onClick={() => {
           if (isText) textController.current?.retry();
           else if (controller.current?.isActive()) void controller.current.retry();
@@ -93,7 +93,7 @@ export function AssistantPanel({ session, live, visible, onSettings }: {
         }}>Retry</button>}
         {!isText && continuing && <button className="text-button" disabled={!guidanceConsent || !connected} onClick={() => {
           if (state.kind === 'recovery') void controller.current?.continueManually(); else void controller.current?.continueTask();
-        }}>Continue</button>}
+        }}>{state.kind === 'recovery' ? 'Continue manually' : 'Continue'}</button>}
         {canComplete && <button className="text-button" onClick={() => controller.current?.confirmComplete()}>Done</button>}
       </div>}
       <form className="chat-composer" onSubmit={submit}>

@@ -1,6 +1,6 @@
 # ClickPilot implementation plan
 
-Current work: UX-1 and UX-2 are VERIFIED by the user. UX-3 is planning only and awaits approval. Earlier milestone gates are historical.
+Current work: repair milestone for global activation, 7A selection, and multi-step menu guidance is VERIFIED by the user on 28 October 2026. The user authorized committing and pushing these changes to `final-touchs`. Earlier milestone gates are historical; no next milestone or deployment is authorized.
 
 Status update — 25 October 2026: the user confirmed milestone 6B is complete and approved scoped 7A implementation with the strict result union and retained side-panel explanation. The 7A branch was based on 6A; it has been fast-forwarded to existing 6B commit `109e04f` without creating a commit. Historical milestone records below are retained.
 
@@ -487,3 +487,9 @@ Package matching Rive/Motion runtimes locally, retain a static poster on asset f
 ## Interaction audio — user-authorized addition
 
 On 27 October 2026 the user requested seven named local interaction clips, then added `boing-1` for normal replies and `boing-2` for selected-text answers. Add only those nine cues, with one reply cue per new shared assistant message and no replay for restored/shown history. Use a minimal local audio player; the need for Chrome's `offscreen` audio permission was explained before implementing it after cold-start autoplay was observed to fail in the character frame. Preserve existing consent/submission/task behavior. The user explicitly waived unit tests for this task; run frontend build/lint/typecheck and a local playback smoke check, record actual results and provide manual Chrome verification. No backend tests or new AI/voice feature.
+
+## Repair milestone — global activation, selection lifecycle, menu continuation — 28 October 2026
+
+User explicitly requested implementation of all three reported issues as one scoped repair. Reuse the current per-tab coordinator, trusted session storage, 7A bubble and deterministic observer. Add optional HTTP/HTTPS all-site host access requested from the toolbar gesture; deny safely to the current-tab path. Serialize global toggles/navigation cleanup, recheck actual Chrome access, and preserve separate task identities. Keep local selection active across sidebar closure, guidance and worker suspension, with real cleanup on deactivation/access loss. Ground optional expansion checks with observed boolean state; include keyboard-focusable custom controls in bounded popup extraction. Preserve failed checks, continuation/identity gates, consent and explicit submission.
+
+Acceptance: global enable covers old/new supported tabs; OFF cancels and removes all UI; restricted pages/denial/revocation stay safe; no implicit provider calls; separate goals across tabs; fresh sanitized menu snapshots retain original goal; failed checks/no change remain recovery. Run workspace typecheck/lint/unit tests/build, focused Chromium activation/selection/guidance/overlay tests, then document native Chrome verification and stop. No dependency, backend service, screenshot or keepalive addition. Details and actual evidence are in the current repair entry of `PROGRESS.md`.

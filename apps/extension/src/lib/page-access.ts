@@ -3,13 +3,26 @@ import { createTabAccess } from './tab-access';
 import { AI_PREFERENCES_KEY, readAiPreferences } from './preferences';
 import { isPageSnapshot, isOverlayResponse, type InspectionResponse, type OverlayResponse, type PanelRequest } from './messages';
 import { isSensitivePage } from '@clickpilot/shared/privacy';
+import { globallyEnabled, hasAllSiteAccess, supportedPage } from './activation';
 
-export const tabAccess = createTabAccess({
+async function probeAccess(tabId: number) {
+  await browser.scripting.executeScript({ target: { tabId }, func: () => undefined });
+}
+const currentTabAccess = createTabAccess({
   read: async (key) => (await browser.storage.session.get(key))[key],
   write: (key, origin) => browser.storage.session.set({ [key]: origin }),
   remove: (key) => browser.storage.session.remove(key),
-  probe: async (tabId) => { await browser.scripting.executeScript({ target: { tabId }, func: () => undefined }); },
+  probe: probeAccess,
 });
+export const tabAccess = {
+  ...currentTabAccess,
+  async allows(tabId: number, url: string) {
+    if (!supportedPage(url)) return false;
+    if (!await globallyEnabled()) return currentTabAccess.allows(tabId, url);
+    if (!await hasAllSiteAccess()) return false;
+    try { await probeAccess(tabId); return true; } catch { return false; }
+  },
+};
 export async function sharingPreferences() {
   return readAiPreferences((await browser.storage.local.get(AI_PREFERENCES_KEY))[AI_PREFERENCES_KEY]);
 }

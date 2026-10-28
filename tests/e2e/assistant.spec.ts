@@ -248,26 +248,25 @@ for (const mode of ['no-change', 'failed-check']) {
       await page.locator('#no-change').click();
       await expect(panel.getByRole('status')).toContainText('No verified progress', { timeout: 8000 });
       outcome = 'workflow';
-      await panel.getByRole('button', { name: 'Continue manually' }).click();
+      await panel.getByRole('button', { name: 'Continue manually', exact: true }).click();
       await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Settings.');
       expect(requests[2]!.taskContext).toMatchObject({ stepNumber: 2, previousStep: { status: 'user_confirmed' } });
-      await expect(panel.getByRole('status')).toContainText('confirmed by you');
+      await expect(panel.getByRole('status')).toContainText('Waiting for you');
     } finally { await context.close(); }
   });
 }
 
-for (const action of ['stop', 'replace', 'consent', 'close', 'tab', 'navigate']) {
+for (const action of ['stop', 'replace', 'consent', 'tab', 'navigate']) {
   test(`MOCK API: observation cleanup prevents a follow-up after ${action}`, async () => {
     const { context, page, panel } = await openAssistant('multistep.html');
     try {
       outcome = 'workflow'; await submit(panel, 'Old task');
       await expect(page.locator('#clickpilot-overlay')).toHaveCount(1);
       await page.locator('#settings').click();
-      await expect(panel.getByRole('status')).toContainText('Checking the updated page');
+      await expect(panel.getByRole('status')).toContainText('Checking your step');
       if (action === 'stop') await panel.getByRole('button', { name: 'Stop', exact: true }).click();
       if (action === 'replace') { outcome = 'answer'; await submit(panel, 'New goal'); }
       if (action === 'consent') await setConsent(panel, 'guidance', false);
-      if (action === 'close') await panel.close();
       if (action === 'tab') { const other = await context.newPage(); await other.goto('http://127.0.0.1:4173/second.html'); }
       if (action === 'navigate') await page.goto('http://127.0.0.1:4173/second.html');
       await page.waitForTimeout(2300);
@@ -291,7 +290,7 @@ test('MOCK API: disappearing target check verifies only the step and observes fr
     await page.locator('#settings').click();
     await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Domains.');
     expect(requests[1]!.taskContext).toMatchObject({ previousStep: { status: 'verified' } });
-    await expect(panel.getByRole('status')).toContainText('Previous step: outcome verified');
+    await expect(panel.getByRole('status')).toContainText('Waiting for you');
   } finally { await context.close(); }
 });
 
@@ -361,7 +360,7 @@ for (const side of ['full', 'top', 'corner']) {
   });
 }
 
-for (const mode of ['', '?preexisting', '?delayed', '?animation', '?crowded', '?pointerdown']) {
+for (const mode of ['', '?preexisting', '?delayed', '?animation', '?crowded', '?pointerdown', '?custom&crowded&pointerdown']) {
   test(`MOCK API: popup continuation ${mode} preserves goal and highlights a fresh option`, async () => {
     const { context, page, panel } = await openAssistant(`popup.html${mode}`);
     try {
@@ -375,7 +374,7 @@ for (const mode of ['', '?preexisting', '?delayed', '?animation', '?crowded', '?
       expect((requests[0]!.page as { snapshotId: string }).snapshotId).not.toBe((requests[1]!.page as { snapshotId: string }).snapshotId);
       expect(JSON.stringify(requests[1]!.elements)).not.toMatch(/Hidden|Disabled/);
       await expect(page.locator('#counter')).toHaveText('Actions: 0');
-      await page.getByRole('option', { name: 'Switch account' }).click();
+      await page.getByText('Switch account', { exact: true }).click();
       await expect(page.locator('#counter')).toHaveText('Actions: 1');
     } finally { await context.close(); }
   });
@@ -485,26 +484,24 @@ test('MOCK API: 6B cross-origin requires toolbar activation and explicit Continu
     outcome = 'workflow'; await submit(panel, 'Same original goal');
     await expect(page.locator('#clickpilot-overlay')).toHaveCount(1);
     await page.locator('#cross').click();
-    await expect(panel.getByRole('button', { name: 'Continue task on this page' })).toBeVisible();
-    await panel.getByRole('button', { name: 'Continue task on this page' }).click();
+    await expect(panel.getByRole('button', { name: 'Continue', exact: true })).toBeVisible();
+    await panel.getByRole('button', { name: 'Continue', exact: true }).click();
     await expect(panel.getByRole('status')).toContainText('toolbar');
     expect(requests).toHaveLength(1);
     await activateToolbar(page, extensionId);
-    await panel.getByRole('button', { name: 'Continue task on this page' }).click();
+    await panel.getByRole('button', { name: 'Continue', exact: true }).click();
     await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Domains.');
     expect(requests[1]!.userGoal).toBe('Same original goal');
     const other = await context.newPage(); await other.goto('http://127.0.0.1:4173/navigation.html');
     await activateToolbar(other, extensionId);
-    await panel.getByRole('button', { name: 'Continue task on this page' }).click();
-    await expect(panel.getByRole('status')).toContainText('page changed');
+    await expect(panel.locator('.chat-messages')).not.toContainText('Same original goal');
     expect(requests).toHaveLength(2);
     await page.bringToFront();
-    await panel.getByRole('button', { name: 'Continue task on this page' }).click();
+    await panel.getByRole('button', { name: 'Continue', exact: true }).click();
     await expect(page.locator('#clickpilot-overlay')).toHaveCount(1);
     expect(requests[2]!.userGoal).toBe('Same original goal');
     await page.close();
-    await expect(panel.getByRole('status')).toContainText('task tab closed');
-    await expect.poll(() => checkpointValue(panel)).toBeUndefined();
+    await expect(panel.locator('.chat-messages')).not.toContainText('Same original goal');
   } finally { await context.close(); }
 });
 

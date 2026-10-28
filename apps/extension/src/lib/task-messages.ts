@@ -27,6 +27,7 @@ export interface TaskView {
   guidanceConsent: boolean;
   textConsent: boolean;
   recovered: boolean;
+  activationNotice?: string;
 }
 export type TaskAction = 'start' | 'stop' | 'retry' | 'continue' | 'continue-manually' | 'done' | 'new-chat'
   | 'text-enable' | 'text-stop' | 'hide';
@@ -69,7 +70,8 @@ function textState(v: unknown): boolean {
     && (v.canRetry === undefined || typeof v.canRetry === 'boolean');
 }
 export function isTaskView(v: unknown): v is TaskView {
-  if (!isRecord(v) || Object.keys(v).some((key) => !['type', 'version', 'tabId', 'epoch', 'taskId', 'revision', 'goal', 'state', 'textState', 'messages', 'source', 'active', 'buddyVisible', 'textEnabled', 'storageAvailable', 'guidanceConsent', 'textConsent', 'recovered'].includes(key))) return false;
+  if (!isRecord(v) || Object.keys(v).some((key) => !['type', 'version', 'tabId', 'epoch', 'taskId', 'revision', 'goal', 'state', 'textState', 'messages', 'source', 'active', 'buddyVisible', 'textEnabled', 'storageAvailable', 'guidanceConsent', 'textConsent', 'recovered', 'activationNotice'].includes(key))) return false;
+  if (v.activationNotice !== undefined && !text(v.activationNotice, 240)) return false;
   if (!isRecord(v) || v.type !== 'TASK_VIEW' || v.version !== 1 || !integer(v.tabId) || !uuid(v.epoch)
     || !uuid(v.taskId) || !integer(v.revision) || !text(v.goal, 240) || !guidanceState(v.state) || !textState(v.textState)
     || !['guidance', 'text'].includes(String(v.source))) return false;

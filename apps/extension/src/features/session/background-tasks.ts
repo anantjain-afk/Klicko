@@ -8,6 +8,7 @@ import { createTaskRecoveryStore, taskKey } from './task-recovery';
 import { createTaskCoordinator, type TabFlags, type TaskCoordinator } from './coordinator';
 import { createPageTransport } from './page-transport';
 import { NAVIGATION_SETTLE_MS } from './session';
+import { ALL_SITE_ORIGINS, GLOBAL_ACTIVATION_KEY, globallyEnabled, hasAllSiteAccess, supportedPage } from '../../lib/activation';
 
 interface Entry {
   task: TaskCoordinator;
@@ -26,6 +27,13 @@ export function startBackgroundTasks() {
   const settingsIntents = new Set<number>();
   // Developer inspections belong to their view; shared tasks do not.
   const debugSnapshots = new Map<string, Map<number, string>>();
+  let globalOn: boolean | undefined;
+  let activationRevision = 0;
+  let activationQueue: Promise<unknown> = Promise.resolve();
+  const tabQueues = new Map<number, Promise<void>>();
+  const initialRevision = activationRevision;
+  void globallyEnabled().then((enabled) => { if (activationRevision === initialRevision) globalOn = enabled; })
+    .catch(() => { if (activationRevision === initialRevision) globalOn = false; });
   let flagsQueue: Promise<unknown> = Promise.resolve();
   const recovery = createTaskRecoveryStore({
     read: async (key) => { await ready; return (await browser.storage.session.get(key))[key]; },
@@ -86,15 +94,85 @@ export function startBackgroundTasks() {
     void creating.catch(() => { if (tasks.get(tabId) === creating) tasks.delete(tabId); });
     return creating;
   }
-  async function showBuddy(tabId: number) {
+  async function showBuddy(tabId: number, globalOnly = false) {
     const entry = await entryFor(tabId);
-    await entry.transport.activePage();
+    await entry.transport.permittedPage();
     if (!entry.task.snapshot().buddyVisible) return;
-    try { await browser.tabs.sendMessage(tabId, { type: 'SHOW_BUDDY' }, { frameId: 0 }); }
+    if (globalOnly && (globalOn === false || !await globallyEnabled())) return;
+    let result: unknown;
+    try { result = await browser.tabs.sendMessage(tabId, { type: 'SHOW_BUDDY', globalOnly }, { frameId: 0 }); }
     catch {
+      if (globalOnly && (globalOn === false || !await globallyEnabled())) return;
       await browser.scripting.executeScript({ target: { tabId }, files: ['/content-scripts/content.js'] });
-      await browser.tabs.sendMessage(tabId, { type: 'SHOW_BUDDY' }, { frameId: 0 });
+      result = await browser.tabs.sendMessage(tabId, { type: 'SHOW_BUDDY', globalOnly }, { frameId: 0 });
     }
+    if (isRecord(result) && result.ok === true && entry.task.snapshot().buddyVisible
+      && (!globalOnly || (globalOn !== false && await globallyEnabled()))) entry.task.reconnectText();
+  }
+  async function activateTab(tabId: number, notice?: string, globalOnly = true, revision = activationRevision) {
+    if (revision !== activationRevision) return;
+    if (globalOnly && (globalOn === false || !await globallyEnabled())) return;
+    const tab = await browser.tabs.get(tabId);
+    const allowed = supportedPage(tab.url) && await tabAccess.allows(tabId, tab.url);
+    if (revision !== activationRevision) return;
+    if (!allowed) {
+      await deactivateTab(tabId, true, revision); return;
+    }
+    const entry = await entryFor(tabId);
+    if (revision !== activationRevision || (globalOnly && (globalOn === false || !await globallyEnabled()))) return;
+    entry.task.activate(notice);
+    await showBuddy(tabId, globalOnly);
+  }
+  async function deactivateTab(tabId: number, accessLost = false, revision = activationRevision) {
+    if (revision !== activationRevision) return;
+    const pending = tasks.get(tabId);
+    if (pending) {
+      const entry = await pending;
+      if (revision !== activationRevision) return;
+      clearTimeout(entry.recoveryTimer);
+      if (accessLost) entry.task.accessLost();
+      else entry.task.deactivate();
+      entry.transport.stopText();
+    }
+    // Remove page UI independently of storage or a slow permission probe.
+    void browser.tabs.sendMessage(tabId, { type: 'DEACTIVATE_PAGE', globalOnly: false }, { frameId: 0 }).catch(() => undefined);
+    await tabAccess.remove(tabId);
+    await flagsQueue;
+    if (revision !== activationRevision) return;
+    await browser.storage.session.remove(flagsKey(tabId));
+  }
+  async function setGlobal(enabled: boolean) {
+    activationRevision++;
+    const revision = activationRevision;
+    globalOn = enabled;
+    if (!enabled) {
+      // A previous current-tab fallback must not survive a global OFF.
+      const values = await browser.storage.session.get(null);
+      const keys = Object.keys(values).filter((key) => key.startsWith('clickpilot.activation.'));
+      if (keys.length) await browser.storage.session.remove(keys);
+    }
+    await browser.storage.session.set({ [GLOBAL_ACTIVATION_KEY]: enabled });
+    await browser.action.setBadgeText({ text: enabled ? 'ON' : '' });
+    await browser.action.setTitle({ title: enabled ? 'Turn ClickPilot off on all tabs' : 'Turn ClickPilot on for all supported tabs' });
+    const tabs = await browser.tabs.query({});
+    for (const tab of tabs) {
+      if (tab.id === undefined) continue;
+      void (enabled ? activateTab(tab.id, undefined, true, revision) : deactivateTab(tab.id, false, revision)).catch(() => undefined);
+    }
+  }
+  function queueTabWork(tabId: number, work: () => Promise<void>) {
+    const next = (tabQueues.get(tabId) ?? Promise.resolve()).then(work).catch(() => undefined);
+    tabQueues.set(tabId, next);
+    void next.then(() => { if (tabQueues.get(tabId) === next) tabQueues.delete(tabId); });
+  }
+  async function activationAllowed(tabId: number, globalOnly: boolean) {
+    const global = await globallyEnabled();
+    const entry = tasks.get(tabId);
+    if (!global && (globalOnly || !entry || !(await entry).task.snapshot().buddyVisible)) return false;
+    const tab = await browser.tabs.get(tabId);
+    if (!tab.url || !await tabAccess.allows(tabId, tab.url)) return false;
+    if (await globallyEnabled()) return true;
+    return !globalOnly && !!entry && (await entry).task.snapshot().buddyVisible;
   }
   function scheduleRecovery(entry: Entry) {
     clearTimeout(entry.recoveryTimer);
@@ -127,12 +205,17 @@ export function startBackgroundTasks() {
       const attempt = ++attachNumber;
       const [active] = await browser.tabs.query({ active: true, lastFocusedWindow: true });
       const tabId = panel ? active?.id : port.sender!.tab!.id;
-      if (tabId === undefined || (!panel && active?.id !== tabId)) return;
+      if (tabId === undefined) return;
       pageKey = !panel && typeof value.pageKey === 'string' && /^[\w-]{1,80}$/.test(value.pageKey) ? value.pageKey : undefined;
       boundTab = tabId;
       if (!await currentPage()) { post({ type: 'PAGE_CHANGED' }); return; }
       const entry = await entryFor(tabId);
       if (closed || attempt !== attachNumber) return;
+      if (!panel) {
+        try { await entry.transport.permittedPage(); }
+        catch { if (!closed && attempt === attachNumber) await deactivateTab(tabId, true); return; }
+        if (closed || attempt !== attachNumber) return;
+      }
       unsubscribe?.(); attached = entry;
       unsubscribe = entry.task.subscribe(post);
       if (panel && active?.windowId !== undefined && settingsIntents.delete(active.windowId)) post({ type: 'VIEW_SETTINGS' });
@@ -181,14 +264,31 @@ export function startBackgroundTasks() {
     });
   });
   browser.action.onClicked.addListener((tab) => {
-    if (tab.id === undefined || !tab.url || !/^https?:\/\//.test(tab.url)) {
-      void browser.action.setTitle({ tabId: tab.id, title: 'ClickPilot is unavailable on this page' }); return;
-    }
-    const id = tab.id; const url = tab.url;
-    void (async () => {
-      await tabAccess.activate(id, url);
-      const entry = await entryFor(id); entry.task.activate(); await showBuddy(id);
-    })().catch(() => { void browser.action.setTitle({ tabId: id, title: 'ClickPilot: open a public webpage and activate again' }); });
+    // Chrome requires the permission request inside the original toolbar gesture.
+    // On a cold worker the request is harmless if the all-site grant already exists.
+    const grant = globalOn === true ? Promise.resolve(false)
+      : browser.permissions.request({ origins: ALL_SITE_ORIGINS }).catch(() => false);
+    activationQueue = activationQueue.then(async () => {
+      if (await globallyEnabled()) { await setGlobal(false); return; }
+      await grant;
+      if (await hasAllSiteAccess()) { await setGlobal(true); return; }
+      await browser.action.setBadgeText({ text: 'TAB' });
+      await browser.action.setTitle({ title: 'All-site access was not granted. Current-tab activation is available on supported webpages; click to retry global mode.' });
+      if (tab.id === undefined || !supportedPage(tab.url)) return;
+      await tabAccess.activate(tab.id, tab.url);
+      void activateTab(tab.id, 'All-site access was not granted. ClickPilot works only on this tab. Use the toolbar to try global mode again.', false).catch(() => undefined);
+    }).catch(() => { void browser.action.setTitle({ title: 'ClickPilot could not change access. Try the toolbar again.' }); });
+  });
+  browser.permissions.onRemoved.addListener(() => {
+    activationQueue = activationQueue.then(async () => {
+      if (await globallyEnabled() && !await hasAllSiteAccess()) await setGlobal(false);
+      for (const tabId of tasks.keys()) {
+        void (async () => {
+          const tab = await browser.tabs.get(tabId).catch(() => null);
+          if (!tab?.url || !await tabAccess.allows(tabId, tab.url)) await deactivateTab(tabId, true);
+        })().catch(() => undefined);
+      }
+    }).catch(() => undefined);
   });
   browser.tabs.onActivated.addListener(({ tabId }) => {
     for (const [id, pending] of tasks) if (id !== tabId) void pending.then((entry) => {
@@ -198,28 +298,37 @@ export function startBackgroundTasks() {
   browser.tabs.onUpdated.addListener((tabId, change, tab) => {
     if (!change.url && change.status !== 'loading' && change.status !== 'complete') return;
     const url = change.url ?? tab.url;
-    void (url ? tabAccess.navigation(tabId, url) : tabAccess.remove(tabId)).catch(() => undefined);
-    // Do not create tasks for unrelated tabs. Restore only known activated/recoverable tabs.
-    void (async () => {
-      const pending = tasks.get(tabId);
-      if (pending) return pending;
-      const data = await browser.storage.session.get([flagsKey(tabId), taskKey(tabId)]);
-      if (data[flagsKey(tabId)] === undefined && data[taskKey(tabId)] === undefined) return null;
-      return entryFor(tabId);
-    })().then((entry) => {
-      if (!entry) return;
-      if (change.url && change.url !== entry.lastUrl) {
-        let sameOrigin = false;
-        try { sameOrigin = new URL(change.url).origin === new URL(entry.lastUrl ?? '').origin; } catch { /* Access can be lost. */ }
-        entry.lastUrl = change.url; entry.task.navigation(sameOrigin); scheduleRecovery(entry);
-      } else if (change.status === 'loading') { entry.task.navigation(true); scheduleRecovery(entry); }
-      else if (change.status === 'complete') scheduleRecovery(entry);
-      if (change.status === 'complete') void showBuddy(tabId).catch(() => undefined);
-    }).catch(() => undefined);
+    // A slow page must not block the toolbar or updates for other tabs.
+    queueTabWork(tabId, async () => {
+      if (url) await tabAccess.navigation(tabId, url);
+      else await tabAccess.remove(tabId);
+      let pending = tasks.get(tabId);
+      if (!pending) {
+        const data = await browser.storage.session.get([flagsKey(tabId), taskKey(tabId)]);
+        if (data[flagsKey(tabId)] !== undefined || data[taskKey(tabId)] !== undefined) pending = entryFor(tabId);
+      }
+      const entry = pending ? await pending : undefined;
+      if (!supportedPage(url)) { if (entry) void deactivateTab(tabId, true).catch(() => undefined); return; }
+      if (entry) {
+        if (change.url && change.url !== entry.lastUrl) {
+          let sameOrigin = false;
+          try { sameOrigin = new URL(change.url).origin === new URL(entry.lastUrl ?? '').origin; } catch { /* Access can be lost. */ }
+          entry.lastUrl = change.url; entry.task.navigation(sameOrigin); scheduleRecovery(entry);
+        } else if (change.status === 'loading') { entry.task.navigation(true); scheduleRecovery(entry); }
+        else if (change.status === 'complete') scheduleRecovery(entry);
+      }
+      if (change.status !== 'complete' && !change.url) return;
+      if (await globallyEnabled()) void activateTab(tabId).catch(() => undefined);
+      else if (entry?.task.snapshot().buddyVisible) {
+        if (await tabAccess.allows(tabId, url)) void showBuddy(tabId).catch(() => undefined);
+        else void deactivateTab(tabId, true).catch(() => undefined);
+      }
+    });
   });
   browser.tabs.onRemoved.addListener((tabId) => {
     closedTabs.add(tabId);
     const pending = tasks.get(tabId); tasks.delete(tabId);
+    tabQueues.delete(tabId);
     void pending?.then((entry) => { clearTimeout(entry.recoveryTimer); entry.task.dispose(); entry.transport.dispose(); }).catch(() => undefined);
     void recovery.save(tabId, null).catch(() => undefined);
     void tabAccess.remove(tabId).catch(() => undefined);
@@ -235,6 +344,24 @@ export function startBackgroundTasks() {
     if (sender.id !== browser.runtime.id) return;
     if (sender.tab?.id !== undefined && sender.frameId === 0 && !isPanelDocument(sender)) {
       const tabId = sender.tab.id;
+      if (isRecord(value) && value.type === 'CHECK_ACTIVATION' && typeof value.globalOnly === 'boolean'
+        && Object.keys(value).every((key) => ['type', 'globalOnly'].includes(key))) {
+        void activationAllowed(tabId, value.globalOnly).then((allowed) => respond({ allowed })).catch(() => respond({ allowed: false }));
+        return true;
+      }
+      if (isRecord(value) && value.type === 'PAGE_RESTORED' && typeof value.pageKey === 'string' && /^[\w-]{1,80}$/.test(value.pageKey)) {
+        const pageKey = value.pageKey;
+        void (async () => {
+          const identity: unknown = await browser.tabs.sendMessage(tabId, { type: 'PAGE_IDENTITY' }, { frameId: 0 });
+          if (!isRecord(identity) || identity.pageKey !== pageKey) return;
+          if (await globallyEnabled()) await activateTab(tabId);
+          else {
+            const entry = await entryFor(tabId);
+            if (entry.task.snapshot().buddyVisible) await showBuddy(tabId);
+          }
+        })().catch(() => undefined);
+        return;
+      }
       void entryFor(tabId).then((entry) => {
         entry.task.pageEvent(value, tabId);
         if (isRecord(value) && value.type === 'PAGE_NAVIGATED') scheduleRecovery(entry);
@@ -251,7 +378,7 @@ export function startBackgroundTasks() {
         }
       }
       const result = await handlePanelRequest(value);
-      if (value.type === 'INSPECT_ACTIVE_TAB' && result.type === 'PAGE_SNAPSHOT' && sender.documentId) {
+      if (value.type === 'INSPECT_ACTIVE_TAB' && 'type' in result && result.type === 'INSPECTION_RESULT' && sender.documentId) {
         const snapshots = debugSnapshots.get(sender.documentId) ?? new Map<number, string>();
         snapshots.set(result.tabId, result.snapshot.snapshotId);
         debugSnapshots.set(sender.documentId, snapshots);

@@ -11,6 +11,7 @@ export interface TextCommand extends TextRequest { type: 'ASK_TEXT'; tabId: numb
 export type TextPageCommand =
   | { type: 'ENABLE_TEXT'; sessionId: string; consent: boolean; resumeDraft?: boolean }
   | { type: 'DISABLE_TEXT'; sessionId: string }
+  | { type: 'CANCEL_TEXT'; sessionId: string }
   | (TextIdentity & { type: 'CHECK_TEXT' })
   | (TextIdentity & { type: 'SHOW_TEXT'; result?: TextResult; error?: string });
 
@@ -31,7 +32,7 @@ export function isTextCommand(value: unknown): value is TextCommand {
 }
 export function isTextPageCommand(value: unknown): value is TextPageCommand {
   if (!record(value)) return false;
-  if (value.type === 'DISABLE_TEXT') return TextIdentitySchema.pick({ sessionId: true }).safeParse({ sessionId: value.sessionId }).success;
+  if (value.type === 'DISABLE_TEXT' || value.type === 'CANCEL_TEXT') return TextIdentitySchema.pick({ sessionId: true }).safeParse({ sessionId: value.sessionId }).success;
   if (value.type === 'ENABLE_TEXT') return typeof value.consent === 'boolean'
     && (value.resumeDraft === undefined || typeof value.resumeDraft === 'boolean')
     && TextIdentitySchema.pick({ sessionId: true }).safeParse({ sessionId: value.sessionId }).success;

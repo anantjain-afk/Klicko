@@ -14,6 +14,14 @@ const guidance = { kind: 'guidance', nextStep: 'none', message: 'Open your profi
 afterEach(() => vi.unstubAllGlobals());
 
 describe('extension API boundary — mocked fetch only', () => {
+  it('passes only observed expansion state through both privacy filters', async () => {
+    const fetch = vi.fn(async () => Response.json(envelope(answer, { sessionId: command.sessionId, requestId: command.requestId })));
+    vi.stubGlobal('fetch', fetch);
+    await requestAssistant(command, { ...snapshot, elements: snapshot.elements.map(e => ({ ...e, expanded: false })) },
+      'https://example.com', new AbortController().signal);
+    const body = JSON.parse((fetch.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
+    expect(body.elements).toEqual([{ id: 'el_1', role: 'button', name: 'Profile', context: 'Navigation', disabled: false, expanded: false }]);
+  });
   it('filters before upload and sends only current task, site origin and eligible labels', async () => {
     // Deliberately omit command-only fields from the API envelope.
     const fetch = vi.fn(async () => Response.json(envelope(answer, { sessionId: command.sessionId, requestId: command.requestId })));

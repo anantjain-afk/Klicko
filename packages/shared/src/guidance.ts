@@ -45,6 +45,7 @@ export const GuidanceRequestSchema = z.strictObject({
     name: z.string().max(80),
     context: z.string().max(80),
     disabled: z.boolean(),
+    expanded: z.boolean().optional(),
   })).max(MAX_ELEMENTS).refine((elements) => new Set(elements.map((element) => element.id)).size === elements.length),
 });
 

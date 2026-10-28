@@ -13,24 +13,26 @@ function originOf(url: string): string | null {
 // A toolbar activation survives worker sleep, but never substitutes for Chrome access.
 // Store only tab/origin metadata in trusted session storage, separately from tasks.
 export function createTabAccess(storage: AccessStorage) {
-  let queue: Promise<unknown> = Promise.resolve();
-  function serial<T>(work: () => Promise<T>): Promise<T> {
-    const result = queue.then(work);
-    queue = result.catch(() => undefined);
+  const queues = new Map<number, Promise<unknown>>();
+  function serial<T>(tabId: number, work: () => Promise<T>): Promise<T> {
+    const result = (queues.get(tabId) ?? Promise.resolve()).then(work);
+    const settled = result.catch(() => undefined);
+    queues.set(tabId, settled);
+    void settled.then(() => { if (queues.get(tabId) === settled) queues.delete(tabId); });
     return result;
   }
   const keyFor = (tabId: number) => `clickpilot.activation.${tabId}`;
   return {
-    activate: (tabId: number, url: string) => serial(async () => {
+    activate: (tabId: number, url: string) => serial(tabId, async () => {
       const origin = originOf(url);
       if (origin) await storage.write(keyFor(tabId), origin);
     }),
-    navigation: (tabId: number, url: string) => serial(async () => {
+    navigation: (tabId: number, url: string) => serial(tabId, async () => {
       const key = keyFor(tabId);
       if (await storage.read(key) !== originOf(url)) await storage.remove(key);
     }),
-    remove: (tabId: number) => serial(() => storage.remove(keyFor(tabId))),
-    allows: (tabId: number, url: string) => serial(async () => {
+    remove: (tabId: number) => serial(tabId, () => storage.remove(keyFor(tabId))),
+    allows: (tabId: number, url: string) => serial(tabId, async () => {
       const origin = originOf(url);
       if (!origin || await storage.read(keyFor(tabId)) !== origin) return false;
       try { await storage.probe(tabId); return true; }

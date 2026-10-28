@@ -33,7 +33,8 @@ export async function requestAssistant(command: AssistantRequest, snapshot: Page
   const raw = GuidanceRequestSchema.safeParse({
     protocolVersion: 3, operation: 'next', sessionId: command.sessionId, requestId: command.requestId, userGoal: command.userGoal, taskContext: command.taskContext,
     page: { url, pageKey: snapshot.pageKey, snapshotId: snapshot.snapshotId },
-    elements: snapshot.elements.map(({ id, role, name, context, disabled }) => ({ id, role, name, context, disabled })),
+    elements: snapshot.elements.map(({ id, role, name, context, disabled, expanded }) => ({ id, role, name, context, disabled,
+      ...(typeof expanded === 'boolean' ? { expanded } : {}) })),
   });
   if (!raw.success) return assistantError('This page context cannot be sent. Try a smaller public page.');
   const clean = prepareProviderContext(raw.data);

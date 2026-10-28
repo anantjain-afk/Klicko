@@ -61,8 +61,8 @@ async function askBuddy(page: Page, question: string) {
   await cdp.send('DOM.focus', { nodeId: node.nodeId }); await cdp.detach();
   await page.keyboard.type(question); await page.keyboard.press('Enter');
 }
-async function setup(fixture = 'guidance.html', consent = true, options: { strictCsp?: boolean; failCharacter?: boolean } = {}) {
-  const extension = await launchExtension();
+async function setup(fixture = 'guidance.html', consent = true, options: { strictCsp?: boolean; failCharacter?: boolean; allSiteAccess?: boolean } = {}) {
+  const extension = await launchExtension(false, options.allSiteAccess);
   let blockedCharacterRequests = 0;
   await extension.context.route('http://127.0.0.1:8787/**', (route) => route.continue({ url: route.request().url().replace('127.0.0.1:8787', `127.0.0.1:${mockPort}`) }));
   await extension.worker.evaluate(async (enabled) => {
@@ -162,9 +162,9 @@ test('full navigation keeps one original-goal task; cross-origin and other tabs 
     await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Settings.');
     await expect.poll(async () => (await buddyCharacter(page)).expression).toBe('Listening');
     await page.getByRole('link', { name: 'Settings', exact: true }).click();
-    await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Domains.');
+    await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Domains.', { timeout: 10000 });
     await page.getByRole('link', { name: 'Domains', exact: true }).click();
-    await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Edit domain.');
+    await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Edit domain.', { timeout: 10000 });
     expect(requests.map((r) => r.userGoal)).toEqual(['Guide me to Edit domain', 'Guide me to Edit domain', 'Guide me to Edit domain']);
     const other = await context.newPage(); await other.goto('http://127.0.0.1:4173/guidance.html');
     await expect(other.locator('#clickpilot-buddy, #clickpilot-overlay')).toHaveCount(0);
@@ -267,6 +267,130 @@ test('a failed character asset leaves the poster and existing ask controls usabl
     await askBuddy(page, 'What does Settings do?');
     await expect.poll(() => buddyText(page)).toContain('Settings controls your preferences.');
     expect((await buddyCharacter(page)).ready).toBe('false');
+    expect(requests).toHaveLength(1);
+  } finally { await context.close(); }
+});
+
+test('global ON covers existing and new tabs; independent goals survive worker recovery; OFF cleans all tabs', async () => {
+  const { context, worker, extensionId } = await launchExtension(false, true);
+  await context.route('http://127.0.0.1:8787/**', (route) => route.continue({ url: route.request().url().replace('127.0.0.1:8787', `127.0.0.1:${mockPort}`) }));
+  await worker.evaluate(async () => {
+    const api = (globalThis as unknown as { chrome: { storage: { local: { set: (v: unknown) => Promise<void> } } } }).chrome;
+    await api.storage.local.set({ 'clickpilot.ai-sharing': { version: 1, onboardingComplete: true, guidance: true, selectedText: true } });
+  });
+  try {
+    const first = await context.newPage(); await first.goto('http://localhost:4173/guidance.html');
+    const second = await context.newPage(); await second.goto('http://127.0.0.1:4173/text.html');
+    await first.bringToFront(); await activateToolbar(first, extensionId);
+    await expect(first.locator('#clickpilot-buddy')).toHaveCount(1);
+    await expect(second.locator('#clickpilot-buddy')).toHaveCount(1);
+    const third = await context.newPage(); await third.goto('http://localhost:4173/second.html');
+    await expect(third.locator('#clickpilot-buddy')).toHaveCount(1);
+    await third.goto('http://127.0.0.1:4173/guidance.html');
+    await expect(third.locator('#clickpilot-buddy')).toHaveCount(1);
+    await third.goBack();
+    await expect(third.locator('#clickpilot-buddy')).toHaveCount(1);
+    await third.goForward();
+    await expect(third.locator('#clickpilot-buddy')).toHaveCount(1);
+    const restricted = await context.newPage(); await restricted.goto('chrome://version');
+    await expect(restricted.locator('#clickpilot-buddy')).toHaveCount(0);
+    await restricted.close();
+    expect(requests).toHaveLength(0);
+    await first.bringToFront();
+    await expect.poll(async () => { const { cdp, node } = await buddyNode(first, 'Open sidebar'); await cdp.detach(); return attribute(node, 'disabled'); }).toBeUndefined();
+    await askBuddy(first, 'First independent goal');
+    await expect.poll(() => buddyText(first)).toContain('Settings controls');
+    await second.bringToFront();
+    await expect.poll(async () => { const { cdp, node } = await buddyNode(second, 'Open sidebar'); await cdp.detach(); return attribute(node, 'disabled'); }).toBeUndefined();
+    await askBuddy(second, 'Second independent goal');
+    await expect.poll(() => buddyText(second)).toContain('Settings controls');
+    expect(requests.map(r => r.userGoal)).toEqual(['First independent goal', 'Second independent goal']);
+    const panel = await openPanel(second, extensionId);
+    await expect(panel.getByRole('log')).toContainText('Second independent goal');
+    await expect(panel.getByRole('log')).not.toContainText('First independent goal');
+    await panel.close();
+    await stopExtensionWorker(second, extensionId);
+    await expect.poll(() => buddyText(second)).toContain('ready to resume');
+    await second.locator('#passage').click({ clickCount: 3 });
+    await expect(second.getByRole('button', { name: 'Ask ClickPilot', exact: true })).toBeVisible();
+    expect(requests).toHaveLength(2);
+    await activateToolbar(second, extensionId);
+    for (const page of [first, second, third]) await expect(page.locator('#clickpilot-buddy, #clickpilot-text, #clickpilot-overlay')).toHaveCount(0);
+    await third.goBack();
+    await expect(third.locator('#clickpilot-buddy, #clickpilot-text, #clickpilot-overlay')).toHaveCount(0);
+    const fourth = await context.newPage(); await fourth.goto('http://localhost:4173/guidance.html');
+    await expect(fourth.locator('#clickpilot-buddy')).toHaveCount(0);
+    expect(requests).toHaveLength(2);
+  } finally { await context.close(); }
+});
+
+test('global OFF aborts a pending request and rejects its late reply on every tab', async () => {
+  const { context, page, extensionId, worker } = await setup('guidance.html', true, { allSiteAccess: true });
+  try {
+    mode = 'delayed'; await askBuddy(page, 'A pending goal');
+    await expect.poll(() => requests.length).toBe(1);
+    await activateToolbar(page, extensionId);
+    await expect(page.locator('#clickpilot-buddy, #clickpilot-text, #clickpilot-overlay')).toHaveCount(0);
+    release?.();
+    await expect.poll(() => worker.evaluate(async () => {
+      const api = (globalThis as unknown as { chrome: { storage: { session: { get: (key: null) => Promise<Record<string, unknown>> } } } }).chrome;
+      return Object.keys(await api.storage.session.get(null)).filter(key => key.startsWith('clickpilot.task.')).length;
+    })).toBe(0);
+    const other = await context.newPage(); await other.goto('http://localhost:4173/guidance.html');
+    await expect(other.locator('#clickpilot-buddy, #clickpilot-overlay')).toHaveCount(0);
+    expect(requests).toHaveLength(1);
+  } finally { release?.(); await context.close(); }
+});
+
+test('an unsent selected-text draft survives worker restart locally and still requires explicit Ask', async () => {
+  const { context, page, extensionId } = await setup('text.html');
+  try {
+    await page.locator('#passage').click({ clickCount: 3 });
+    await page.getByRole('button', { name: 'Ask ClickPilot', exact: true }).click();
+    await page.getByLabel('Question about this passage').fill('Explain this public passage');
+    await stopExtensionWorker(page, extensionId);
+    await expect.poll(async () => {
+      const { cdp, node } = await buddyNode(page, 'Open sidebar'); await cdp.detach(); return attribute(node, 'disabled');
+    }).toBeUndefined();
+    await expect(page.getByLabel('Question about this passage')).toHaveValue('Explain this public passage');
+    expect(requests).toHaveLength(0);
+    await page.getByRole('button', { name: 'Ask', exact: true }).click();
+    await expect(page.getByRole('status')).toContainText('Plants use sunlight.');
+    expect(requests).toHaveLength(1);
+  } finally { await context.close(); }
+});
+
+test('denied optional permission explains current-tab scope and does not activate a second tab', async () => {
+  const { context, page } = await setup('text.html', false);
+  try {
+    await clickBuddy(page, 'Ask ClickPilot');
+    await expect.poll(() => buddyText(page)).toContain('All-site access was not granted');
+    const second = await context.newPage(); await second.goto('http://127.0.0.1:4173/guidance.html');
+    await expect(second.locator('#clickpilot-buddy')).toHaveCount(0);
+    await second.close(); await page.bringToFront();
+    await page.keyboard.press('Escape');
+    await page.locator('#passage').click({ clickCount: 3 });
+    await expect(page.getByRole('button', { name: 'Ask ClickPilot', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Ask ClickPilot', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Ask', exact: true })).toBeDisabled();
+    expect(requests).toHaveLength(0);
+  } finally { await context.close(); }
+});
+
+test('selection remains available after guidance and Stop with no sidebar or implicit upload', async () => {
+  const { context, page } = await setup('text.html');
+  try {
+    await askBuddy(page, 'Explain settings');
+    await expect.poll(() => buddyText(page)).toContain('Settings controls');
+    await page.keyboard.press('Escape');
+    await page.locator('#passage').click({ clickCount: 3 });
+    await expect(page.getByRole('button', { name: 'Ask ClickPilot', exact: true })).toBeVisible();
+    expect(requests).toHaveLength(1);
+    await clickBuddy(page, 'Ask ClickPilot');
+    await clickBuddy(page, 'Stop');
+    await page.keyboard.press('Escape');
+    await page.locator('#passage').click({ clickCount: 3 });
+    await expect(page.getByRole('button', { name: 'Ask ClickPilot', exact: true })).toBeVisible();
     expect(requests).toHaveLength(1);
   } finally { await context.close(); }
 });

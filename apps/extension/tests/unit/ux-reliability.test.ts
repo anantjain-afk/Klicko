@@ -50,6 +50,20 @@ it('storage failure never authorizes access; concurrent activation and navigatio
   expect(await broken.allows(1, 'https://example.com')).toBe(false);
 });
 
+it('an unresponsive tab access probe does not block another tab', async () => {
+  const data = new Map<string, unknown>();
+  let release!: () => void;
+  const stalled = new Promise<void>((resolve) => { release = resolve; });
+  const access = createTabAccess({ read: async (key) => data.get(key),
+    write: async (key, origin) => { data.set(key, origin); }, remove: async (key) => { data.delete(key); },
+    probe: async (tabId) => { if (tabId === 1) await stalled; } });
+  await access.activate(1, 'https://example.com');
+  const first = access.allows(1, 'https://example.com');
+  await access.activate(2, 'https://other.example');
+  expect(await access.allows(2, 'https://other.example')).toBe(true);
+  release(); expect(await first).toBe(true);
+});
+
 it('service errors use plain messages and preserve only fixed diagnostic codes', () => {
   expect(aiServiceError('provider_unavailable').message).toBe("ClickPilot couldn't connect. Try again.");
   expect(aiServiceError('invalid_reply').cause).toBe('invalid_reply');

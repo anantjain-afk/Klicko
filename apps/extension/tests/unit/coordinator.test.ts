@@ -30,6 +30,29 @@ function setup(saved: TaskRecovery | null = null) {
 }
 
 describe('shared per-tab task authority', () => {
+  it('keeps the existing selection service enabled across guidance, Stop, Done and consent withdrawal', async () => {
+    const { task, client, command } = setup();
+    task.activate(); task.reconnectText();
+    expect(client.textPost).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'ARM_TEXT' }));
+    task.pauseForTabChange();
+    expect(task.snapshot().textEnabled).toBe(true);
+    expect(client.textPost).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'CANCEL_TEXT' }));
+    await task.command(command('start', 'Open Settings')); await flush();
+    expect(task.snapshot().textEnabled).toBe(true);
+    for (const action of ['stop', 'done'] as const) {
+      await task.command(command(action));
+      expect(task.snapshot().textEnabled).toBe(true);
+      expect(client.textPost).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'ARM_TEXT' }));
+    }
+    task.preferences({ ...preferences, selectedText: true });
+    task.preferences({ ...preferences, selectedText: false });
+    expect(task.snapshot().textEnabled).toBe(true);
+    expect(client.textPost).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'ARM_TEXT', consent: false }));
+    task.deactivate();
+    expect(task.snapshot()).toMatchObject({ buddyVisible: false, textEnabled: false, active: false });
+    expect(client.textPost).toHaveBeenLastCalledWith({ type: 'STOP_TEXT' });
+    task.dispose();
+  });
   it('two subscribers share one request; detaching one does not end it; duplicate/stale commands do not restart it', async () => {
     const { task, ask, command } = setup();
     const buddy = vi.fn(); const panel = vi.fn(); const detach = task.subscribe(panel); task.subscribe(buddy);

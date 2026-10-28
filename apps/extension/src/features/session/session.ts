@@ -254,7 +254,10 @@ function createSession(client: SessionClient, onChange: (state: GuidanceState) =
         return;
       }
       if (message.status === 'not_verified' || !message.changed) {
-        transition({ kind: 'recovery', canContinue: true, message: 'No verified progress was established. Retry or continue manually; task completion is unverified.' }); return;
+        const reason = message.status === 'not_verified'
+          ? `The expected ${run.selection?.expectedOutcome?.type === 'target_expanded' ? 'target expansion' : 'target disappearance'} was not observed${message.changed ? ', although page controls changed' : ''}.`
+          : 'No eligible control change was observed after the click.';
+        transition({ kind: 'recovery', canContinue: true, message: `No verified progress was established. ${reason} Retry or continue manually; task completion is unverified.` }); return;
       }
       void advance(run);
       return;
@@ -271,7 +274,7 @@ function createSession(client: SessionClient, onChange: (state: GuidanceState) =
     }
     const next: ActiveRun = { ...run, abort: new AbortController(),
       context: { stepNumber: run.context.stepNumber + 1, previousStep: run.context.previousStep ? { ...run.context.previousStep } : null },
-      targetId: undefined, selection: undefined, observationTimeout: undefined };
+      targetId: undefined, selection: undefined, observationTimeout: undefined, settle: true };
     active = next;
     release(run);
     await requestStep(next);

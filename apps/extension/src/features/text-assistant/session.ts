@@ -88,8 +88,11 @@ export function createTextSession(client: TextClient, change: (state: TextState)
       }
       if (value.selectionId !== selectionId) return;
       if (value.type === 'TEXT_OPENED') { client.interruptGuidance(); set({ kind: 'composing', message: 'Type your question beside the selected passage.' }); }
-      if (value.type === 'TEXT_SUBMITTED') void submit({ type: 'ASK_TEXT', protocolVersion: 1, operation: 'explain_text',
-        sessionId, pageKey: value.pageKey, selectionId, tabId, requestId: 1, selectedText: value.selectedText, question: value.question });
+      if (value.type === 'TEXT_SUBMITTED') {
+        if (consent && state.kind !== 'composing') client.interruptGuidance();
+        void submit({ type: 'ASK_TEXT', protocolVersion: 1, operation: 'explain_text',
+          sessionId, pageKey: value.pageKey, selectionId, tabId, requestId: 1, selectedText: value.selectedText, question: value.question });
+      }
       if (value.type === 'TEXT_INVALIDATED') clear('The page or passage changed. Select text again.');
       if (value.type === 'TEXT_CANCELLED') {
         cancelRequest(); retryCommand = null; selectionId = null;
@@ -98,6 +101,10 @@ export function createTextSession(client: TextClient, change: (state: TextState)
     },
     invalidate(message = 'Page changed. Activate the toolbar and select text again.') {
       page = null; clear(message); post({ type: 'STOP_TEXT' });
+    },
+    pauseSelection() {
+      clear('Return to this tab and select text to ask again.');
+      post({ type: 'CANCEL_TEXT', sessionId });
     },
     stop() { enabled = false; clear('Text assistant stopped. Resume when you want to select a passage.', 'stopped'); post({ type: 'STOP_TEXT' }); },
     connectionLost() {

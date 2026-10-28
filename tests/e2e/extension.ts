@@ -1,18 +1,36 @@
 import { chromium, expect, type Page } from '@playwright/test';
 import { resolve } from 'node:path';
+import { cp, mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 
-export async function launchExtension(firstUse = false) {
-  const extensionPath = resolve('apps/extension/.output/chrome-mv3');
+export async function launchExtension(firstUse = false, allSiteAccess = false) {
+  let extensionPath = resolve('apps/extension/.output/chrome-mv3');
+  let testCopy: string | undefined;
+  if (allSiteAccess) {
+    // Headless Chrome cannot operate its native optional-permission dialog. A
+    // disposable copy pregrants host access; production keeps it optional.
+    testCopy = await mkdtemp(resolve(tmpdir(), 'clickpilot-global-test-'));
+    await cp(extensionPath, testCopy, { recursive: true }); extensionPath = testCopy;
+    const path = resolve(extensionPath, 'manifest.json');
+    const manifest = JSON.parse(await readFile(path, 'utf8'));
+    manifest.host_permissions = ['http://*/*', 'https://*/*'];
+    await writeFile(path, JSON.stringify(manifest));
+  }
   const context = await chromium.launchPersistentContext('', {
     channel: 'chromium',
     viewport: { width: 1100, height: 800 },
     args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`],
   });
   const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
+  if (testCopy) context.on('close', () => { void rm(testCopy!, { recursive: true, force: true }); });
   // A worker target exists before its bundle finishes registering action handlers.
   await expect.poll(() => worker.evaluate(() => (globalThis as unknown as {
     chrome: { action: { onClicked: { hasListeners: () => boolean } } };
   }).chrome.action.onClicked.hasListeners())).toBe(true);
+  if (!allSiteAccess) await worker.evaluate(() => {
+    const api = (globalThis as unknown as { chrome: { permissions: { request: (value: unknown) => Promise<boolean> } } }).chrome;
+    api.permissions.request = async () => false;
+  });
   if (!firstUse) await worker.evaluate(async () => {
     const api = (globalThis as unknown as { chrome: { storage: { local: { set: (value: unknown) => Promise<void> } } } }).chrome;
     await api.storage.local.set({ 'clickpilot.ai-sharing': { version: 1, onboardingComplete: true, guidance: false, selectedText: false } });

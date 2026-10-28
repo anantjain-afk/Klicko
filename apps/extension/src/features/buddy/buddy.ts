@@ -32,6 +32,7 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
   let submitting: string | null = null;
   let localError = '';
   let position: Position | null = null;
+  let selectionRect: DOMRect | null = null;
   let pointer: { id: number; x: number; y: number; start: Position; lastX: number; lastY: number; time: number; vx: number; vy: number } | null = null;
   let dragged = false;
   let clickSignal = 0;
@@ -109,6 +110,7 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
       { x: v.left + v.width - BUDDY_SIZE - 20, y: v.top + 20 }, { x: v.left + 20, y: v.top + 20 }];
     return candidates.find((candidate) => {
       if (blocked && overlaps({ ...candidate, width: BUDDY_SIZE, height: BUDDY_SIZE }, blocked)) return false;
+      if (selectionRect && overlaps({ ...candidate, width: BUDDY_SIZE, height: BUDDY_SIZE }, selectionRect)) return false;
       return [[4, 4], [BUDDY_SIZE / 2, BUDDY_SIZE / 2], [BUDDY_SIZE - 4, BUDDY_SIZE - 4]].every(([x, y]) => !document.elementsFromPoint(candidate.x + x!, candidate.y + y!).some((element) => {
         if (element === surface.host) return false;
         return element.id.startsWith('clickpilot-') || !!element.closest('button,a,input,textarea,select,[role="button"],[role="link"]');
@@ -125,7 +127,7 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
     launcher.hidden = false;
     position = clampBuddy(docked ? { x: v.left + v.width - BUDDY_SIZE - 12, y: v.top + 80 } : position ?? choosePosition(targetRect()), v);
     const blocked = targetRect();
-    if (!pointer && blocked && overlaps({ ...position, width: BUDDY_SIZE, height: BUDDY_SIZE }, blocked)) position = choosePosition(blocked);
+    if (!pointer && [blocked, selectionRect].some(rect => rect && overlaps({ ...position!, width: BUDDY_SIZE, height: BUDDY_SIZE }, rect))) position = choosePosition(blocked);
     if (!placed || placed.x !== position.x || placed.y !== position.y) {
       placementAnimation?.stop();
       launcher.style.left = '0px'; launcher.style.top = '0px';
@@ -202,12 +204,15 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
       if (!view.storageAvailable) message = 'Task recovery is unavailable. Stop and try again.';
     }
     if (localError) message = localError;
+    if (connected && !message) message = view?.activationNotice ?? '';
     status.textContent = message; status.hidden = !message;
     status.className = `status${localError || state?.kind === 'error' || (text && view?.textState.kind === 'error') ? ' error' : ''}`;
     send.disabled = !connected || !!submitting || !view?.guidanceConsent || !draft.trim(); openSidebar.disabled = !connected;
     stop.hidden = !view?.active && !busy;
     retry.hidden = text ? !(view?.textState.kind === 'error' && view.textState.canRetry) : state?.kind !== 'error' && state?.kind !== 'recovery';
     next.hidden = text || !state || !('canContinue' in state) || !state.canContinue;
+    next.textContent = state?.kind === 'recovery' ? 'Continue manually' : 'Continue';
+    next.setAttribute('aria-label', next.textContent);
     done.hidden = text || !state || !['waiting', 'recovery', 'clicked'].includes(state.kind);
     for (const action of [stop, retry, next, done]) action.disabled = !connected;
     note.textContent = view?.guidanceConsent ? 'You make every click.' : 'Webpage sharing is off. Enable it in Settings to ask.';
@@ -326,6 +331,17 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
     },
     pageChanged,
     avoidTarget: place,
+    avoidSelection(rect: DOMRect | null) {
+      if (disposed) return;
+      selectionRect = rect;
+      if (rect) expanded = false;
+      render();
+    },
+    hide() {
+      visible = false; expanded = false; draft = ''; input.value = ''; view = null;
+      clearTimeout(reconnectTimer); port?.disconnect(); port = null; connected = false;
+      launchSoundArmed = true; render(); surface.host.remove();
+    },
     dispose() {
       disposed = true; clearTimeout(reconnectTimer); port?.disconnect(); placementAnimation?.stop(); popupAnimation?.stop();
       robot?.dispose(); surface.host.remove(); reducedMotion.removeEventListener('change', motionChanged);

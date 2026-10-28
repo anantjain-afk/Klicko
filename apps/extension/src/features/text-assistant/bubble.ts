@@ -6,7 +6,8 @@ import type { TextEvent, TextPageCommand } from '../../lib/text-assistant';
 import { uiTheme, uiDarkTheme, uiTokens } from '../../lib/ui-tokens';
 import { playSound } from '../../lib/sounds';
 
-export function createTextBubble(pageKey: () => string, valid: () => boolean, send: (event: TextEvent) => void) {
+export function createTextBubble(pageKey: () => string, valid: () => boolean, send: (event: TextEvent) => void,
+  positionChanged: (rect: DOMRect | null) => void = () => undefined) {
   let enabled: { sessionId: string; consent: boolean } | null = null;
   let current: { identity: TextIdentity; range: Range; text: string } | null = null;
   let surface: ReturnType<typeof createOverlaySurface> | null = null;
@@ -19,8 +20,7 @@ export function createTextBubble(pageKey: () => string, valid: () => boolean, se
   let awaitingPointerSelection = false;
   let previousFocus: HTMLElement | null = null;
   let lastUrl = location.href;
-  let suspended = false;
-  let suspendedDraft: string | undefined;
+  let lastBounds = '';
 
   function emit(type: 'TEXT_SELECTED' | 'TEXT_OPENED' | 'TEXT_CANCELLED' | 'TEXT_INVALIDATED') {
     if (current) send({ ...current.identity, type });
@@ -28,9 +28,9 @@ export function createTextBubble(pageKey: () => string, valid: () => boolean, se
   function removeSurface() {
     cancelAnimationFrame(frame); frame = 0;
     surface?.host.remove(); surface = null; box = null;
+    lastBounds = ''; positionChanged(null);
   }
   function cancel(invalidated = false) {
-    suspendedDraft = undefined;
     clearTimeout(completionTimer);
     emit(invalidated ? 'TEXT_INVALIDATED' : 'TEXT_CANCELLED');
     const hadFocus = !!surface?.shadow.activeElement;
@@ -59,6 +59,9 @@ export function createTextBubble(pageKey: () => string, valid: () => boolean, se
       return;
     }
     box.style.left = `${position.left}px`; box.style.top = `${position.top}px`;
+    const bounds = box.getBoundingClientRect();
+    const key = JSON.stringify([bounds.x, bounds.y, bounds.width, bounds.height]);
+    if (key !== lastBounds) { lastBounds = key; positionChanged(bounds); }
     frame = requestAnimationFrame(place);
   }
   function button(label: string, action: () => void) {
@@ -143,7 +146,7 @@ export function createTextBubble(pageKey: () => string, valid: () => boolean, se
     place();
   }
   function finishSelection() {
-    if (!enabled || suspended || pointerDown || surface?.shadow.activeElement) return;
+    if (!enabled || pointerDown || surface?.shadow.activeElement) return;
     if (awaitingPointerSelection && !selectionChanged) { awaitingPointerSelection = false; return; }
     awaitingPointerSelection = false;
     const captured = captureSelection();
@@ -180,36 +183,47 @@ export function createTextBubble(pageKey: () => string, valid: () => boolean, se
   function onKeyDown(event: KeyboardEvent) {
     if (event.key === 'Escape' && current) { if (inside(event)) { event.preventDefault(); event.stopPropagation(); } cancel(); }
   }
-  function onVisibility() { if (document.hidden) disable(); }
-  function disable() { cancel(true); enabled = null; suspended = false; }
-  const poll = setInterval(() => {
-    if (lastUrl !== location.href || !valid()) { lastUrl = location.href; disable(); }
-    else if (current && !matches(current.identity)) cancel(true);
-  }, 250);
-  document.addEventListener('pointerdown', onPointerDown, true);
-  document.addEventListener('pointerup', onPointerUp, true);
-  document.addEventListener('pointercancel', onPointerCancel, true);
-  document.addEventListener('selectionchange', onSelectionChange);
-  document.addEventListener('keyup', onKeyUp, true);
-  document.addEventListener('keydown', onKeyDown, true);
-  document.addEventListener('visibilitychange', onVisibility);
-  window.addEventListener('pagehide', disable);
+  function onVisibility() { if (document.hidden) cancel(true); }
+  let listening = false;
+  let poll: ReturnType<typeof setInterval> | undefined;
+  function listen(value: boolean) {
+    if (listening === value) return;
+    listening = value;
+    const events = { pointerdown: onPointerDown, pointerup: onPointerUp, pointercancel: onPointerCancel,
+      selectionchange: onSelectionChange, keyup: onKeyUp, keydown: onKeyDown, visibilitychange: onVisibility };
+    // The handlers keep their browser event types; registration is the same for both paths.
+    for (const [name, handler] of Object.entries(events)) {
+      if (value) document.addEventListener(name, handler as EventListener, true);
+      else document.removeEventListener(name, handler as EventListener, true);
+    }
+    if (value) {
+      window.addEventListener('pagehide', disable);
+      poll = setInterval(() => {
+        if (lastUrl !== location.href || !valid()) { lastUrl = location.href; disable(); }
+        else if (current && !matches(current.identity)) cancel(true);
+      }, 250);
+    } else { clearInterval(poll); poll = undefined; window.removeEventListener('pagehide', disable); }
+  }
+  function disable() {
+    cancel(true); enabled = null; pointerDown = false;
+    awaitingPointerSelection = false; selectionChanged = false; listen(false);
+  }
 
   return {
     handle(command: TextPageCommand) {
+      if (command.type === 'CANCEL_TEXT') { if (enabled?.sessionId === command.sessionId) cancel(true); return { ok: true }; }
       if (command.type === 'DISABLE_TEXT') { if (enabled?.sessionId === command.sessionId) disable(); return { ok: true }; }
       if (command.type === 'ENABLE_TEXT') {
-        if (command.resumeDraft && suspendedDraft !== undefined && current && current.identity.pageKey === pageKey()) {
+        if (enabled?.sessionId !== command.sessionId && mode === 'requesting') cancel(true);
+        // A new worker may rebind a still-valid local offer or unsent draft.
+        // Pending requests are cancelled above; passage text is never persisted.
+        if (command.resumeDraft && current && current.identity.pageKey === pageKey() && sameSelectedText(current.range, current.text)) {
           current.identity.sessionId = command.sessionId;
           if (enabled) enabled.sessionId = command.sessionId;
         }
         if (enabled?.sessionId !== command.sessionId) cancel();
         enabled = command; lastUrl = location.href;
-        const draft = suspendedDraft;
-        suspended = false; suspendedDraft = undefined;
-        if (draft !== undefined && current && matches(current.identity)) {
-          emit('TEXT_SELECTED'); compose(draft);
-        }
+        listen(true);
         const ask = surface?.shadow.querySelector<HTMLButtonElement>('button[type="submit"]');
         if (ask) ask.disabled = !command.consent;
         const note = surface?.shadow.querySelector('.note');
@@ -225,20 +239,8 @@ export function createTextBubble(pageKey: () => string, valid: () => boolean, se
       return { ok: true };
     },
     disable,
-    suspend() {
-      // The page document can retain an unsent draft while the worker restarts.
-      // Only the same panel session may restore it, after fresh access checks.
-      suspendedDraft = mode === 'composing' ? surface?.shadow.querySelector('input')?.value : undefined;
-      suspended = true;
-      removeSurface();
-      if (suspendedDraft === undefined) current = null;
-    },
     dispose() {
       disable(); clearInterval(poll); clearTimeout(completionTimer);
-      document.removeEventListener('pointerdown', onPointerDown, true); document.removeEventListener('pointerup', onPointerUp, true);
-      document.removeEventListener('pointercancel', onPointerCancel, true); document.removeEventListener('selectionchange', onSelectionChange);
-      document.removeEventListener('keyup', onKeyUp, true); document.removeEventListener('keydown', onKeyDown, true);
-      document.removeEventListener('visibilitychange', onVisibility); window.removeEventListener('pagehide', disable);
     },
   };
 }

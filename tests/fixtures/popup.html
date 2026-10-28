@@ -5,18 +5,19 @@
 const params = new URLSearchParams(location.search);
 const portal = document.getElementById('portal');
 const markup = '<div role="menuitem" tabindex="0">Rename</div><div role="menuitemcheckbox" tabindex="0">Pin</div><div role="menuitemradio" tabindex="0">Plugins</div><div role="option" tabindex="0">Switch account</div><div role="menuitem" aria-disabled="true">Disabled</div><div role="menuitem" hidden>Hidden</div>';
+const controls = params.has('custom') ? '<custom-control tabindex="0" style="display:block;padding:12px">Switch account</custom-control>' : markup;
 if(params.has('preexisting')) portal.innerHTML = markup;
 if(params.has('crowded')) document.getElementById('background').innerHTML='<button>Background</button>'.repeat(155);
 let actions=0;
 document.getElementById('account')[params.has('pointerdown') ? 'onpointerdown' : 'onclick']=()=>{
  const reveal=()=>{
-  if(!portal.innerHTML) portal.innerHTML=markup;
+  if(!portal.innerHTML) portal.innerHTML=controls;
   portal.hidden=false;
   if(params.has('animation')){portal.style.opacity='0';portal.style.transition='opacity 0.6s';requestAnimationFrame(()=>requestAnimationFrame(()=>portal.style.opacity='1'));}
  };
  if(params.has('pointerdown')) reveal(); else setTimeout(reveal,params.has('delayed')?2300:0);
 };
 document.getElementById('close').onclick=()=>portal.hidden=true;
-portal.onclick=event=>{if(event.target.getAttribute('role')==='option')document.getElementById('counter').textContent=`Actions: ${++actions}`;};
+portal.onclick=event=>{if(event.target.textContent==='Switch account')document.getElementById('counter').textContent=`Actions: ${++actions}`;};
 setInterval(()=>document.getElementById('noise').textContent=String(Date.now()),50);
 </script></html>

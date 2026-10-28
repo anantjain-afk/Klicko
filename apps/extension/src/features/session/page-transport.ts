@@ -22,13 +22,18 @@ export function createPageTransport(tabId: number, textEvent: (value: unknown) =
   let armed: { sessionId: string; pageKey: string; consent: boolean } | undefined;
   let arming: string | undefined;
 
-  async function activePage() {
-    const [tab] = await browser.tabs.query({ active: true, lastFocusedWindow: true });
+  async function permittedPage() {
+    const tab = await browser.tabs.get(tabId);
     if (tab?.url && isSensitivePage(tab.url)) throw new Error('For your privacy, ClickPilot is unavailable on this page.');
     if (tab?.id !== tabId || !tab.url || !await tabAccess.allows(tabId, tab.url)) {
       throw new Error('Click the ClickPilot toolbar icon on this public page, then try again.');
     }
     return tab;
+  }
+  async function activePage() {
+    const [tab] = await browser.tabs.query({ active: true, lastFocusedWindow: true });
+    if (tab?.id !== tabId) throw new Error('Return to this task’s tab to continue.');
+    return permittedPage();
   }
   function track() {
     if (page || closed) return;
@@ -45,7 +50,7 @@ export function createPageTransport(tabId: number, textEvent: (value: unknown) =
   async function armText(sessionId: string, consent: boolean) {
     const attempt = ++armNumber;
     try {
-      const tab = await activePage();
+      const tab = await permittedPage();
       if (closed || attempt !== armNumber) return;
       arming = sessionId;
       const command = { type: 'ENABLE_TEXT', sessionId, consent, resumeDraft: true };
@@ -57,7 +62,7 @@ export function createPageTransport(tabId: number, textEvent: (value: unknown) =
         if (closed || attempt !== armNumber) return;
         result = await browser.tabs.sendMessage(tabId, command, { frameId: 0 });
       }
-      const latest = await activePage();
+      const latest = await permittedPage();
       if (closed || attempt !== armNumber) return;
       if (latest.url !== tab.url || !result || typeof result !== 'object' || !('pageKey' in result) || typeof result.pageKey !== 'string') {
         stopText(); return;
@@ -71,10 +76,13 @@ export function createPageTransport(tabId: number, textEvent: (value: unknown) =
     }
   }
   return {
-    track, activePage, stopText,
+    track, activePage, permittedPage, stopText,
     textPost(value: unknown) {
       if (!value || typeof value !== 'object' || !('type' in value)) return;
       if (value.type === 'STOP_TEXT') stopText();
+      if (value.type === 'CANCEL_TEXT' && armed && 'sessionId' in value && value.sessionId === armed.sessionId) {
+        void browser.tabs.sendMessage(tabId, { type: 'CANCEL_TEXT', sessionId: armed.sessionId }, { frameId: 0 }).catch(() => undefined);
+      }
       if (value.type === 'ARM_TEXT' && 'sessionId' in value && typeof value.sessionId === 'string'
         && 'consent' in value && typeof value.consent === 'boolean') void armText(value.sessionId, value.consent);
     },

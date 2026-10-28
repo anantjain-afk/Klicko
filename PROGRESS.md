@@ -1,8 +1,10 @@
 # ClickPilot progress
 
-Updated: 27 October 2026.
+Updated: 28 October 2026.
 
 ## Current status
+
+Three-issue repair: **VERIFIED by the user** on 28 October 2026. After the global activation correction, the user confirmed “everything is working how it should” and authorized committing and pushing the changes to `final-touchs`. The recorded automated results and limitations remain unchanged; earlier status entries are historical.
 
 Mascot visual redesign: **AWAITING USER VERIFICATION**, 27 October 2026. The approved UI refresh is implemented with a shared green workshop robot, warm light/dark surfaces and restrained interaction. Extension lint, 124 unit tests and build passed; three preexisting type errors and four distinct preexisting browser failures were reproduced on untouched HEAD. All six buddy workflows passed in both focused browser runs; combined runs finished 41/42 and 28/31. Exact evidence, visual review, limitations and numbered Chrome checks are recorded at the end. No backend tests, Git operations, deployment or next milestone were performed.
 
@@ -1053,3 +1055,109 @@ The temporary browser smoke check used a local static page and intercepted synth
 ## Git handoff authorization — 27 October 2026
 
 The user explicitly requested committing and pushing all current changes to `feature/redesign`. This authorizes the redesign/prototype/runtime/audio/source-asset/documentation commit and publication of that Git branch to the configured origin. It does not authorize deployment, a pull request merge, or a later implementation milestone, and does not change the manual Chrome verification status recorded above. No additional tests were run for this source-control-only handoff; the prior check evidence and known limitations remain applicable. The resulting commit/push confirmation is reported in the conversation.
+
+## Global activation, local text selection and menu continuation repair — 28 October 2026
+
+Status: **AWAITING USER VERIFICATION**. The user explicitly requested all three related fixes. This does not imply verification of previous UI/audio work. No commit, push, deploy or publish was performed.
+
+### Investigation and changes
+
+- The old toolbar handler authorized only the clicked tab and its origin. Global ON now requests optional `http://*/*` and `https://*/*` host access in the toolbar gesture, checks Chrome's actual grant and scripting access, and activates currently open supported tabs. Tab events activate subsequent supported documents without keeping the service worker alive. Global OFF serializes with tab events, cancels tasks and removes buddy/selection/overlay UI. A single session-scoped global flag survives worker suspension; it resets to OFF after the browser session ends. Tasks and recovery records remain per-tab. Restricted browser/store pages and the existing sensitive-page exclusion are skipped.
+- Restored back/forward-cache documents hide their old UI on page exit and ask the worker to recheck global state and access before showing it again. Actual cache use still needs Chrome verification.
+- A denied all-site request keeps the current toolbar gesture's temporary `activeTab` route, shows the TAB badge and explains the restriction in the buddy. When access is lost, local UI/listeners are removed and an interrupted task is paused; revoked all-site permission turns global mode off. A reconnect checks scripting access again. Permission records are not themselves authority. Browser host permission is separate from the existing two AI-sharing consents; neither activation nor local selection initiates a model call.
+- Reused the 7A selection implementation. Guidance, Stop, Done, New chat, sidebar closure and worker disconnect no longer leave selection disabled. Switching tabs cancels the current selection/request and removes its bubble while retaining the listener for the next selection; actual deactivation/access loss removes the listener. A valid unsent selection draft may rebind in the same document after worker restart; an interrupted request is cancelled rather than replayed. The buddy moves away from a selection bubble and collapses its card when the bubble appears. Existing user-gesture, consent, range, sensitive-content and result checks remain.
+- The observed YouTube error is generated *before* the next snapshot/provider call: the controller received either no eligible control change or a failed optional objective check. It is not the distinct observation-timeout or stale-request message. A pre-fix regression reproduced the first case: on a crowded page, a newly opened focusable custom control without one of the original roles was excluded from extraction, so it could not contribute to a changed inventory. Extraction now includes keyboard-focusable custom controls and reserves popup slots before the 150-element cap. The regression passes with a fresh snapshot and the original goal.
+- A separate verified grounding gap was that Gemini received no `aria-expanded` state yet could propose `target_expanded`. The sanitized control contract now includes an optional observed boolean, and the existing prompt says to suggest this objective only when the target exposes `expanded: false`. The checker still requires the exact target's false-to-true state; a failed check still pauses and is not silently discarded. Recovery text now distinguishes failed expansion/disappearance checks from no eligible control change. Manual continuation is explicitly labelled and remains user-confirmed.
+- The trace still requires a matching trusted target click and current session/request/page/snapshot/target identity. Pointer-down/keyboard preparation captures the before inventory, mutations plus 100 ms sampling wait for a 400 ms quiet period within the 5 s observation bound, and the controller retains its 1.5 s timeout grace and stale-result guards. A continuing action with an eligible settled change and no failed objective takes a fresh settled snapshot, retains the original goal and bounded prior-step status, and respects `nextStep`. A click, an unverified change, a retry or a model response never marks task completion. No YouTube-specific selector was added.
+- The signed-in YouTube DOM and its actual Gemini result were not available to inspect. The reproduced extraction defect and missing expansion evidence are real failure paths, but they do not establish which one caused the user's particular intermittent incident. The new recovery reason and the live Chrome check below are needed if it recurs. Public/synthetic fixtures and mocked API responses were used; no real Gemini call was made during this repair.
+- Corrected the debug inspection result discriminator from `PAGE_SNAPSHOT` to the actual `INSPECTION_RESULT`; this also fixes three pre-existing TypeScript errors and restores panel-owned debug-overlay cleanup. No new dependency, screenshot feature, autonomous website action or background keepalive was introduced.
+
+### Checks
+
+| Exact command/check | Actual result |
+| --- | --- |
+| `corepack pnpm lint` | Exit 0 on final source. Log: `/tmp/clickpilot-issues-lint.log` |
+| `corepack pnpm typecheck` | Exit 0 on final source, including the formerly failing debug inspection types. Log: `/tmp/clickpilot-issues-types.log` |
+| `corepack pnpm test` | Exit 0 on final source: **92 API and 129 extension unit tests passed**. Log: `/tmp/clickpilot-issues-unit.log` |
+| `WRANGLER_LOG_PATH=/tmp/clickpilot-issues-wrangler.log corepack pnpm build` | Exit 0 on final source; extension output is `apps/extension/.output/chrome-mv3`, and API build is a Wrangler dry run. The existing >500 kB chunk warning remains. Log: `/tmp/clickpilot-issues-build.log` |
+| `corepack pnpm exec playwright test tests/e2e/buddy.spec.ts --workers=1 --output=/tmp/clickpilot-issues-final-buddy-results` | Exit 0 on final source: **13/13 passed**, including global ON/OFF, a pending-request abort, existing/new tabs, back/forward navigation, restricted page, isolation, local draft recovery, and simulated denial. Log: `/tmp/clickpilot-issues-final-buddy.log` |
+| Focused combined Chromium command below | Exit 1 on final source: **36 passed, 1 failed, 8 skipped**. The buddy drag/Hide case failed once when CDP could not get the Hide button's box after a drag; the separate 13/13 buddy rerun above passed that same case and the eight skipped cases. The 36 passes include all selected guidance/verification, cross-origin, overlay navigation and selected-text cancellation cases. Log: `/tmp/clickpilot-issues-final.log` |
+| Earlier broader Chromium command below | Exit 1 before the final back/forward change: **88 passed, 1 failed**. The failed cross-origin test used an obsolete sidebar button label; its assertions were updated for the current UI/per-tab ownership, and it passed both its isolated rerun and the final focused combined run. Log: `/tmp/clickpilot-issues-verified.log` |
+| Production manifest inspection | Confirmed the loopback host stays required; HTTP/HTTPS all-site hosts are declared only in `optional_host_permissions`. No static content script is registered. |
+| `git diff --check` | Exit 0 after this record was completed. |
+
+Final focused combined command, exactly as run:
+
+```sh
+corepack pnpm exec playwright test tests/e2e/buddy.spec.ts tests/e2e/assistant.spec.ts tests/e2e/text-assistant.spec.ts tests/e2e/overlay.spec.ts --grep 'buddy.spec.ts|popup continuation|no-change waits|failed-check waits|observation cleanup|already-expanded|disappearing target|final guidance|6B cross-origin requires toolbar activation|selection completes|pending text cancellation|closing the sidebar leaves|toolbar activation and specific text consent|overlay.spec.ts.*(navigation|panel)' --workers=1 --output=/tmp/clickpilot-issues-final-results
+```
+
+Earlier broader command, exactly as run:
+
+```sh
+corepack pnpm exec playwright test tests/e2e/buddy.spec.ts tests/e2e/text-assistant.spec.ts tests/e2e/overlay.spec.ts tests/e2e/assistant.spec.ts --grep 'buddy.spec.ts|overlay.spec.ts|selection completes|toolbar activation|script-only|viewport clamping|geometry loss|sensitive, editable|MOCK text result|pending text cancellation|nested scroll|closing the sidebar leaves|popup continuation|no-change waits|failed-check waits|observation cleanup|already-expanded|disappearing target|final guidance' --workers=1 --output=/tmp/clickpilot-issues-verified-results
+```
+
+The 45 focused scenarios are covered across the 36 passing cases and the separate 13/13 buddy run (the runs overlap). The broader earlier run exercised the complete overlay suite and selected text privacy, hostile-result, layout and cancellation cases. A pre-fix custom-control regression failed before implementation; the same unit and browser regression now pass. One earlier drag/Hide test failed under browser-run timing and passed on a separate rerun; real interaction remains a manual check. The complete `test:e2e` suite was not run. An initial sandboxed browser attempt could not bind localhost; the local browser checks used approved sandbox escalation. A concurrent retry briefly lost the shared fixture server and was rerun sequentially. These intermediate failures are not counted as passes.
+
+Headless Chromium cannot operate the native optional-permission dialog. The denial test stubs the request as denied; global tests use a temporary copy of the manifest with test-only host access already granted. The shipped manifest keeps the hosts optional. Browser tests use synthetic fixtures, local mock HTTP responses, forced worker termination and a panel HTML tab. They do not verify a native permission prompt, actual Chrome permission revocation, natural worker suspension, a guaranteed back/forward-cache hit, real Gemini, a signed-in YouTube account, or Chrome's actual sidebar lifecycle.
+
+### Manual Chrome verification
+
+1. Restart the local API Worker (`corepack pnpm dev:api`) so it accepts the updated optional `expanded` field and uses the updated Gemini instruction. At `chrome://extensions`, reload the unpacked `apps/extension/.output/chrome-mv3`. Open two ordinary public webpages and a restricted Chrome page. Check the extension's Errors and service-worker console for unexpected errors; if checking worker sleep, close DevTools afterward.
+2. With all-site access not already granted, click the toolbar and **deny** Chrome's prompt. On a supported page expect the buddy, a TAB badge and an explanation that only the current tab is active. Another tab must not get a buddy. Select public webpage text with the sidebar closed: expect Ask ClickPilot; no provider request should occur from selection or drafting. If the prompt is not shown because access was previously granted, revoke the host grant in Chrome's extension site-access settings before testing denial.
+3. Click the toolbar on the supported page and accept the optional all-site request. Expect ON and one buddy on each already-open supported tab. Open another webpage and navigate between supported origins and through Back/Forward: expect one buddy per supported page. Restricted Chrome and Web Store pages must not show one. Submit different public goals on two tabs with existing guidance consent enabled; switching back must retain each tab's own task rather than showing the other goal. No page should be clicked, typed into or navigated by ClickPilot.
+4. Close the actual sidebar. Select normal public text, including after asking and stopping a guidance task and after switching away and back: expect one Ask ClickPilot bubble, with the buddy/card moved away if they would overlap. Selection and typing a question must cause no AI request. With selected-text sharing off, Ask must remain disabled; after enabling that separate consent, an explicit Ask may send the selected passage and question. Try Cancel, Escape, an input/editable field and sensitive fixture text: expect cleanup or no offer, as applicable.
+5. While signed in to YouTube, ask **how to switch accounts** with webpage guidance consent and the local Worker configured. Click the highlighted profile control yourself. If Gemini signals a continuing step and the existing checks permit it, expect a new instruction and highlight for the visible **Switch account** control without re-entering the goal. A timeout, no change, a failed declared outcome or a final-step signal must remain honest; no success or automatic click is allowed. If the reported recovery recurs, record whether it says an expected target expansion/disappearance failed or no eligible control change was observed; do not share account text or private snapshots.
+6. Click the toolbar again while global mode is ON, including once while a mock or real request is pending. Expect the buddy, selection bubble and highlight to disappear from every open tab; late replies must not restore them. Open a new supported tab and use Back/Forward: no buddy should return until re-enabled. Re-enable and revoke the optional host grant in Chrome's extension settings: expect global UI/listening to be removed and no further page sharing. Report any tab that retains interactive UI after access is lost.
+7. Re-enable global mode, leave a supported tab idle with extension DevTools closed so Chrome can suspend the worker, then select public text and open the buddy. Expect local selection to remain available and the existing task to reconnect paused without a replayed request. Continue only by user action. Check normal website controls, dragging, the actual sidebar, page/extension consoles and Network for unexpected failures or unsolicited requests.
+
+**STOP: AWAITING USER VERIFICATION.** The project's `AGENTS.md` requires manual verification and explicit approval before the next milestone.
+
+## Global activation correction — 28 October 2026
+
+Status: **VERIFIED by the user** on 28 October 2026. The user confirmed the text-selection and YouTube cases work, reported the global activation issue, and after the correction confirmed “everything is working how it should”. The user authorized committing and pushing the changes to `final-touchs`. No later milestone or deployment is authorized.
+
+### Cause and correction
+
+- The original global activation queue awaited every tab's response before it could process new-tab updates or another toolbar action. A deterministic Chromium regression held one tab's `SHOW_BUDDY` response open: before the fix, the newly opened website did not get a buddy and clicking the toolbar again left the first buddy visible. This reproduces both reported symptoms, although the particular stalled tab in the user's Chrome session was not inspected.
+- Global ON/OFF state changes no longer wait for tab UI messages. Tab navigation work and temporary-access probes are isolated by tab. A delayed page cannot block another tab or the toolbar. Global OFF starts page cleanup without waiting on a slow storage operation or permission probe.
+- Before showing or removing page UI, the content script checks the current activation and actual Chrome access with the worker. Late show/disable responses therefore cannot undo a newer toggle. In-memory revision checks prevent older asynchronous work from overwriting a newer state. The existing session-scoped global flag is still the authority after worker restart; no heartbeat or keepalive was added. Previous current-tab fallback grants are cleared on global OFF so they cannot silently revive it.
+- The existing optional HTTP/HTTPS host request, denied-permission fallback, privacy/AI-consent checks, per-tab tasks and local 7A selection remain in place. No new browser permission, dependency, Gemini behavior or autonomous page action was added.
+
+### Actual checks
+
+| Exact command/check | Result |
+| --- | --- |
+| `corepack pnpm lint` | Exit 0 on final source; `/tmp/clickpilot-switch-lint-final.log` |
+| `corepack pnpm typecheck` | Exit 0 on final source; `/tmp/clickpilot-switch-type-final.log` |
+| `corepack pnpm test` | Exit 0 on final source: **92 API + 130 extension unit tests passed**, including a stalled access probe that does not block another tab; `/tmp/clickpilot-switch-unit-final.log` |
+| `WRANGLER_LOG_PATH=/tmp/clickpilot-switch-wrangler-final.log corepack pnpm build` | Exit 0 on final source; the extension was rebuilt and the API Worker was built with Wrangler dry-run only. Existing >500 kB warning remains; `/tmp/clickpilot-switch-build-final.log` |
+| Final focused Chromium command below | Exit 0 on the final build: **9/9 passed**. It includes a stalled tab blocking neither a new site nor OFF, late show/disable messages after toggles, fallback → global → OFF, independent tab state, worker restart, selection and custom-menu continuation; `/tmp/clickpilot-switch-final.log` |
+| Earlier broader Chromium command below | Exit 0 on the preceding build: **33/33 passed**, covering all buddy workflows, popup continuation, cross-origin recovery and text selection/cancellation; `/tmp/clickpilot-switch-regression.log`. The final per-tab probe isolation and shutdown-order changes were followed by the final focused 9/9 and final workspace checks above. |
+| Pre-fix `corepack pnpm exec playwright test tests/e2e/global-activation.spec.ts --workers=1 --output=/tmp/clickpilot-stalled-before-results` | Exit 1 as expected: both new-tab activation and global OFF assertions failed with one delayed tab; `/tmp/clickpilot-stalled-before.log`. The final focused run passes that same scenario. |
+| `git diff --check` | Exit 0 after this record was completed. |
+
+Final focused browser command, exactly as run:
+
+```sh
+corepack pnpm exec playwright test tests/e2e/global-activation.spec.ts tests/e2e/buddy.spec.ts tests/e2e/text-assistant.spec.ts tests/e2e/assistant.spec.ts --grep 'global-activation.spec.ts|global ON covers|global OFF aborts|unsent selected|denied optional|selection remains|selection completes|popup continuation .custom' --workers=1 --output=/tmp/clickpilot-switch-final-results
+```
+
+Earlier broader browser command, exactly as run:
+
+```sh
+corepack pnpm exec playwright test tests/e2e/global-activation.spec.ts tests/e2e/buddy.spec.ts tests/e2e/text-assistant.spec.ts tests/e2e/assistant.spec.ts --grep 'global-activation.spec.ts|buddy.spec.ts|selection completes|toolbar activation and specific text consent|pending text cancellation|closing the sidebar leaves|popup continuation|6B cross-origin requires toolbar activation' --workers=1 --output=/tmp/clickpilot-switch-regression-results
+```
+
+Browser tests use local fixtures, mocked responses and a disposable copy with all-site host access pregranted; fallback denial is simulated. They do not test the native Chrome permission prompt, actual permission revocation, natural worker sleep or the user's particular browser state. No real Gemini request, deployment, commit or push was made.
+
+### Manual Chrome verification
+
+1. Reload the unpacked extension at `chrome://extensions` from `apps/extension/.output/chrome-mv3`. Open two ordinary websites. Click the ClickPilot toolbar icon once and grant optional all-site access if Chrome asks. Expect the ON badge and one buddy on both supported pages. If a page is unsupported or blocked by Chrome, no buddy is expected there.
+2. Open a new tab, navigate to an ordinary supported website, and wait for it to finish loading. Expect one buddy without another toolbar click. Open a second new website and switch between tabs; expect independent task state and no duplicate buddies. Chrome's built-in New Tab page is restricted and is not the requested website case.
+3. Click the toolbar icon once more from a supported page. Expect the ON badge to clear and the buddy, selection bubble and any highlight to disappear from every open tab. Open another supported website and navigate Back/Forward; the buddy must stay absent. A buddy reappearing or remaining interactive fails verification.
+4. Turn it on again, then off again, including after waiting with extension DevTools closed for the worker to become idle. Expect the same behavior without duplicate UI or a request replay. Confirm normal webpage controls still work and that merely enabling or selecting text creates no Gemini request.
+5. If practical, revoke the optional site access in Chrome's extension settings and try again. Denial should retain only the current-tab fallback with a TAB badge; no other tab should silently gain access. Inspect extension Errors/service-worker console for unexpected errors, and report the affected page and visible badge if either toolbar operation still fails.
+
+**VERIFIED by the user.** Commit and push to `final-touchs` were explicitly requested; no later milestone or deployment is authorized.

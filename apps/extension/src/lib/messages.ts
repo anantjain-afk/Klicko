@@ -7,6 +7,7 @@ export interface ObservedElement {
   name: string;
   context: string;
   disabled: boolean;
+  expanded?: boolean;
   rect: { x: number; y: number; width: number; height: number };
 }
 
@@ -161,6 +162,7 @@ function isObservedElement(value: unknown): value is ObservedElement {
     && typeof value.name === 'string' && value.name.length <= 80
     && typeof value.context === 'string' && value.context.length <= 80
     && typeof value.disabled === 'boolean'
+    && (value.expanded === undefined || typeof value.expanded === 'boolean')
     && ['x', 'y', 'width', 'height'].every((key) =>
       typeof rect[key] === 'number' && Number.isFinite(rect[key]))
     && typeof rect.width === 'number' && rect.width > 0
