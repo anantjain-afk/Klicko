@@ -65,7 +65,7 @@ it('an unresponsive tab access probe does not block another tab', async () => {
 });
 
 it('service errors use plain messages and preserve only fixed diagnostic codes', () => {
-  expect(aiServiceError('provider_unavailable').message).toBe("Klicko couldn't connect. Try again.");
+  expect(aiServiceError('provider_unavailable').message).toContain('Choose a provider');
   expect(aiServiceError('invalid_reply').cause).toBe('invalid_reply');
   expect(aiServiceError('rate_limited').message).toContain('usage limit');
 });

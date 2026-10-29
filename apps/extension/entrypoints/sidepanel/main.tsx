@@ -7,6 +7,7 @@ import { ManualInspection } from '../../src/features/session/ManualInspection';
 import { useGuidanceSession } from '../../src/features/session/useGuidanceSession';
 import { useAiPreferences } from '../../src/features/settings/useAiPreferences';
 import { SharingOnboarding, SharingSettings } from '../../src/features/settings/SharingSettings';
+import { ProviderSettings } from '../../src/features/settings/ProviderSettings';
 import './style.css';
 import { uiTheme, uiDarkTheme } from '../../src/lib/ui-tokens';
 import { Companion } from '../../src/features/buddy/CompanionAvatar';
@@ -99,6 +100,7 @@ function App() {
       </div>
       {view === 'settings' && <div className="secondary-view">
         <h1 ref={heading} tabIndex={-1}>Settings</h1>
+        <ProviderSettings />
         <SharingSettings sharing={sharing} />
         <p className="settings-note">Messages stay in this panel session. Earlier messages aren’t sent with new questions.</p>
       </div>}

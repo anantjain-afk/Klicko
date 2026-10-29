@@ -4,7 +4,7 @@ Updated: 29 October 2026.
 
 ## Current status
 
-Provider/model/user-key milestone: **AWAITING USER VERIFICATION**. The user approved this feature alone on 29 October 2026. Gemini, OpenAI, and Groq now retain separate saved model/key records; guidance and selected-text requests use only the active provider. A user-reported overwrite bug was corrected during verification. The ZIP and website deployment remain unapproved. See the newest entry below for checks, limits, and Chrome steps.
+Provider/model/user-key milestone: **VERIFIED by the user** on 29 October 2026. Gemini, OpenAI, and Groq retain separate saved model/key records; guidance and selected-text requests use only the active provider. The user confirmed the overwrite fix works and authorized committing and pushing these changes to `website`. ZIP packaging and website deployment remain unapproved. See the newest entry below for checks and limits.
 
 Extension display-name change to Klicko: **VERIFIED by the user**, 28 October 2026. The user confirmed the name change in Chrome and authorized pushing it to `final-touchs`. The manifest name/action title, side panel, buddy, selection UI, status/error messages, accessible labels, and extension page titles now say Klicko. The two API instructions that identify the assistant also say Klicko so generated answers do not inherit the old product name. Internal `clickpilot` IDs, storage keys, package names, and protocols remain stable. No dependency or browser permission changed.
 
@@ -1203,7 +1203,7 @@ Browser tests use local fixtures, mocked responses and a disposable copy with al
 
 ## User-selected AI provider, model, and key — 29 October 2026
 
-Status: **AWAITING USER VERIFICATION**. The user confirmed the intended three-provider Settings flow and authorized implementing only this feature. No ZIP, website deployment, commit, push, publication, or production resource change was made.
+Status: **VERIFIED by the user**. The user confirmed the three-provider Settings flow, then reported a key-overwrite bug. After the fix, the user confirmed “good, its working” and explicitly requested a commit and push to `website`. ZIP packaging, website deployment, publication, and production resource changes remain unapproved.
 
 ### What changed
 
@@ -1251,4 +1251,4 @@ The reported cause was confirmed: the first implementation wrote all providers t
 5. Open `http://127.0.0.1:4173/text.html`, enable **Selected-text assistance**, select the public fixture paragraph, choose **Ask Klicko**, type a question, then press **Ask**. Expect no provider request until Ask, then an answer from the selected provider. A selection alone causing a request fails.
 6. Close and reopen Chrome with the same installed extension. Expect both providers' saved models/keys to remain usable after selecting and saving each one with a blank key field. With Groq selected, choose **Remove saved key** and ask again. Expect a clear setup error and no Groq request. Switch to Gemini; its saved-key note must still appear, and after saving it should still answer. Revoke a provider's site access in Chrome settings and save again; denial must leave a new key unsaved. Check extension Errors and the service-worker console for unexpected errors without copying credentials.
 
-**STOP: AWAITING USER VERIFICATION.** The project's `AGENTS.md` requires user confirmation before another milestone. ZIP packaging and website deployment remain unapproved.
+**STOP: VERIFIED.** The user authorized the `website` branch commit and push. ZIP packaging and website deployment remain unapproved.

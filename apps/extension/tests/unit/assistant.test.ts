@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { requestAssistant, type AssistantRequest } from '../../src/lib/assistant';
 import { createAssistantSession, type GuidanceState, type SessionClient } from '../../src/features/session/session';
 import type { GuidanceIdentity, PageSnapshot } from '../../src/lib/messages';
+import type { ProviderSettings } from '../../src/lib/provider-settings';
 
 const snapshot: PageSnapshot = { pageKey: 'page', snapshotId: 'snapshot', elements: [
   { id: 'el_1', role: 'button', name: 'Profile', context: 'Navigation', disabled: false, rect: { x: 1, y: 1, width: 100, height: 40 } },
@@ -11,36 +12,42 @@ const command: AssistantRequest = { type: 'ASK_ASSISTANT', tabId: 1, sessionId: 
 const envelope = (result: unknown, identity: GuidanceIdentity = command) => ({ protocolVersion: 3, ...identity, pageKey: 'page', snapshotId: 'snapshot', result });
 const answer = { kind: 'answer', message: 'Profile is a visible control.' };
 const guidance = { kind: 'guidance', nextStep: 'none', message: 'Open your profile here.', targetId: 'el_1', instruction: 'Click Profile.' };
+const provider: ProviderSettings = { version: 1, provider: 'gemini', model: 'gemini-3.5-flash-lite', apiKey: 'fixture-key' };
+const providerResponse = (result: unknown) => Response.json({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(result) }] } }] });
 afterEach(() => vi.unstubAllGlobals());
 
 describe('extension API boundary — mocked fetch only', () => {
   it('passes only observed expansion state through both privacy filters', async () => {
-    const fetch = vi.fn(async () => Response.json(envelope(answer, { sessionId: command.sessionId, requestId: command.requestId })));
+    const fetch = vi.fn(async () => providerResponse(answer));
     vi.stubGlobal('fetch', fetch);
     await requestAssistant(command, { ...snapshot, elements: snapshot.elements.map(e => ({ ...e, expanded: false })) },
-      'https://example.com', new AbortController().signal);
+      'https://example.com', new AbortController().signal, provider);
     const body = JSON.parse((fetch.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
-    expect(body.elements).toEqual([{ id: 'el_1', role: 'button', name: 'Profile', context: 'Navigation', disabled: false, expanded: false }]);
+    expect(JSON.parse(body.contents[0].parts[0].text).elements).toEqual([
+      { id: 'el_1', role: 'button', name: 'Profile', context: 'Navigation', expanded: false },
+    ]);
   });
   it('filters before upload and sends only current task, site origin and eligible labels', async () => {
     // Deliberately omit command-only fields from the API envelope.
-    const fetch = vi.fn(async () => Response.json(envelope(answer, { sessionId: command.sessionId, requestId: command.requestId })));
+    const fetch = vi.fn(async () => providerResponse(answer));
     vi.stubGlobal('fetch', fetch);
-    await requestAssistant(command, snapshot, 'https://example.com/private-path?token=PRIVATE-MARKER#secret', new AbortController().signal);
+    await requestAssistant(command, snapshot, 'https://example.com/private-path?token=PRIVATE-MARKER#secret', new AbortController().signal, provider);
     const [url, init] = fetch.mock.calls[0]! as unknown as [string, RequestInit];
-    expect(url).toBe('http://127.0.0.1:8787/v1/guidance/next');
+    expect(url).toContain('generativelanguage.googleapis.com');
     const body = JSON.parse(init.body as string);
-    expect(body.page.url).toBe('https://example.com');
-    expect(body.elements).toHaveLength(1);
-    expect(JSON.stringify(body)).not.toMatch(/person@|PRIVATE-|private-path|rect|viewport|GEMINI_API_KEY|history/);
+    const context = JSON.parse(body.contents[0].parts[0].text);
+    expect(context.page.origin).toBe('https://example.com');
+    expect(context.elements).toHaveLength(1);
+    expect((init.headers as Record<string, string>)['x-goog-api-key']).toBe(provider.apiKey);
+    expect(JSON.stringify(context)).not.toMatch(/person@|PRIVATE-|private-path|rect|viewport|GEMINI_API_KEY|history/);
   });
 
   it('blocks sensitive pages or questions before upload', async () => {
     const fetch = vi.fn(); vi.stubGlobal('fetch', fetch);
     for (const url of ['https://example.com/checkout', 'https://example.com/medical/records', 'https://user:secret@example.com']) {
-      await expect(requestAssistant(command, snapshot, url, new AbortController().signal)).rejects.toThrow('sensitive');
+      await expect(requestAssistant(command, snapshot, url, new AbortController().signal, provider)).rejects.toThrow('sensitive');
     }
-    await expect(requestAssistant({ ...command, userGoal: 'Use sk-private-marker' }, snapshot, 'https://example.com', new AbortController().signal)).rejects.toThrow('sensitive');
+    await expect(requestAssistant({ ...command, userGoal: 'Use sk-private-marker' }, snapshot, 'https://example.com', new AbortController().signal, provider)).rejects.toThrow('sensitive');
     expect(fetch).not.toHaveBeenCalled();
   });
 
@@ -48,23 +55,23 @@ describe('extension API boundary — mocked fetch only', () => {
     { ...guidance, targetId: 'el_2' }, { ...guidance, targetId: 'el_999' },
     { ...answer, targetId: 'el_1' }, { kind: 'complete', message: 'Done' },
   ])('rejects invalid model output %j again in the extension', async (result) => {
-    vi.stubGlobal('fetch', vi.fn(async () => Response.json(envelope(result, { sessionId: command.sessionId, requestId: 1 }))));
-    await expect(requestAssistant(command, snapshot, 'https://example.com', new AbortController().signal)).rejects.toThrow('reply safely');
+    vi.stubGlobal('fetch', vi.fn(async () => providerResponse(result)));
+    await expect(requestAssistant(command, snapshot, 'https://example.com', new AbortController().signal, provider)).rejects.toThrow('reply safely');
   });
 
   it('blocks sensitive last-action context before upload', async () => {
     const fetch = vi.fn(); vi.stubGlobal('fetch', fetch);
     await expect(requestAssistant({ ...command, taskContext: { stepNumber: 2, previousStep: {
       action: 'Use sk-private-marker', event: 'trusted_click', status: 'unverifiable',
-    } } }, snapshot, 'https://example.com', new AbortController().signal)).rejects.toThrow('sensitive');
+    } } }, snapshot, 'https://example.com', new AbortController().signal, provider)).rejects.toThrow('sensitive');
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it('rejects stale text-only envelopes and oversized responses', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => Response.json(envelope(answer, { sessionId: command.sessionId, requestId: 99 }))));
-    await expect(requestAssistant(command, snapshot, 'https://example.com', new AbortController().signal)).rejects.toThrow('reply safely');
+  it('rejects malformed and oversized provider responses', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ candidates: [] })));
+    await expect(requestAssistant(command, snapshot, 'https://example.com', new AbortController().signal, provider)).rejects.toThrow('reply safely');
     vi.stubGlobal('fetch', vi.fn(async () => new Response('x'.repeat(8193))));
-    await expect(requestAssistant(command, snapshot, 'https://example.com', new AbortController().signal)).rejects.toThrow('reply safely');
+    await expect(requestAssistant(command, snapshot, 'https://example.com', new AbortController().signal, provider)).rejects.toThrow('reply safely');
   });
 });
 

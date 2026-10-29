@@ -1,5 +1,7 @@
 # Local Gemini assistant — milestone 6A
 
+> Historical development setup: the current extension uses saved user-selected provider settings and calls Gemini, OpenAI, or Groq directly. It no longer calls this local API. The local Worker and its tests remain for development; see the current setup in `README.md`.
+
 The extension can answer a question or guide several user-performed steps toward one original goal. Gemini chooses a single observed control and whether another reasoning step is needed after the user acts. The content script observes facts; the per-tab task coordinator gates follow-up requests while the buddy and side panel display its state. It never clicks, types, submits or navigates. Mock guidance remains labelled and local. Conversation history and screenshots are not uploaded or durably stored. A bounded privacy-filtered recovery record can retain the goal and short summary in trusted session storage. Optional local checks verify step outcomes; overall task completion requires explicit user confirmation.
 
 ## Local setup

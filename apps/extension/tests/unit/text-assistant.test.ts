@@ -4,12 +4,14 @@ import { createTextSession, type TextState } from '../../src/features/text-assis
 import { isSensitivePage } from '@clickpilot/shared/privacy';
 import { prepareText, validateTextResponse } from '@clickpilot/shared/text-assistant';
 import { isTextCommand, isTextEvent, isTextPageCommand, requestText, type TextCommand } from '../../src/lib/text-assistant';
+import type { ProviderSettings } from '../../src/lib/provider-settings';
 
 const sessionId = '00000000-0000-4000-8000-000000000001';
 const identity = { sessionId, pageKey: 'page', selectionId: 'selection' };
 const request: TextCommand = { type: 'ASK_TEXT', protocolVersion: 1, operation: 'explain_text', ...identity, requestId: 1, tabId: 1,
   selectedText: 'Plants store energy.', question: 'Explain this.' };
 const result = { kind: 'explanation' as const, quickExplanation: 'Plants store energy.', detailedExplanation: 'Sunlight becomes stored chemical energy.' };
+const provider: ProviderSettings = { version: 1, provider: 'gemini', model: 'gemini-3.5-flash-lite', apiKey: 'fixture-key' };
 function rangeFor(element: Element) { const range = document.createRange(); range.selectNodeContents(element); return range; }
 beforeEach(() => { document.body.innerHTML = ''; });
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
@@ -119,12 +121,12 @@ describe('text client and transient session', () => {
     session.enable(); expect(client.post.mock.calls.length).toBe(calls + 1); session.dispose();
   });
   it('bounds and validates a text response and sends no local tab metadata', async () => {
-    const fetch = vi.fn(async () => Response.json({ protocolVersion: 1, ...identity, requestId: 1, result })); vi.stubGlobal('fetch', fetch);
-    await requestText(request, new AbortController().signal);
+    const fetch = vi.fn(async () => Response.json({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(result) }] } }] })); vi.stubGlobal('fetch', fetch);
+    await requestText(request, new AbortController().signal, provider);
     const init = (fetch.mock.calls[0] as unknown as [string, RequestInit])[1];
-    expect(JSON.parse(init.body as string)).not.toHaveProperty('tabId');
+    expect(JSON.parse(init.body as string).contents[0].parts[0].text).not.toContain('tabId');
     expect(init.redirect).toBe('error'); expect(init.cache).toBe('no-store');
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('x'.repeat(16385))));
-    await expect(requestText(request, new AbortController().signal)).rejects.toThrow('reply safely');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('x'.repeat(32769))));
+    await expect(requestText(request, new AbortController().signal, provider)).rejects.toThrow('reply safely');
   });
 });

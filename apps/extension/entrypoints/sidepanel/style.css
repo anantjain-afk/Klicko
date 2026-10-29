@@ -81,6 +81,14 @@ textarea { caret-color: var(--green); }
 .sharing-onboarding h1 { max-width: 280px; font-size: 30px; font-weight: 600; letter-spacing: -.03em; line-height: 1.2; }
 .sharing-onboarding > p { margin-top: 16px; color: var(--muted); font-size: 14px; line-height: 1.6; }
 .sharing-settings { margin-top: 24px; font-size: 13px; line-height: 1.5; }
+.provider-settings { margin-top: 24px; padding-bottom: 24px; border-bottom: 1px solid var(--line); font-size: 13px; line-height: 1.5; }
+.provider-settings h2 { font-size: 16px; font-weight: 600; }
+.provider-settings > p { margin-top: 8px; color: var(--muted); }
+.provider-settings form { display: grid; gap: 8px; margin-top: 16px; }
+.provider-settings label { margin-top: 8px; font-weight: 600; }
+.provider-settings select, .provider-settings input { width: 100%; min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); background: var(--raised); font: inherit; }
+.provider-settings form .primary-button { margin-top: 8px; }
+.provider-settings > .text-button { margin-top: 12px; }
 .sharing-choices { min-width: 0; margin: 24px 0 16px; padding: 0; border: 0; }
 .sharing-choices legend { margin-bottom: 12px; font-size: 13px; font-weight: 600; }
 .sharing-choices label { display: flex; align-items: flex-start; gap: 10px; padding-block: 14px; border-bottom: 1px solid var(--line); cursor: pointer; }

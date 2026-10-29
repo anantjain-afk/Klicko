@@ -1,7 +1,7 @@
-import { MAX_TEXT_BYTES, TextErrorSchema, TextIdentitySchema, TextRequestSchema, prepareText, validateTextResponse,
+import { MAX_TEXT_BYTES, TextIdentitySchema, TextRequestSchema, prepareText, validateTextResponse,
   safeTextResult, type TextRequest, type TextIdentity, type TextResult } from '@clickpilot/shared/text-assistant';
-import { readBoundedJson } from '@clickpilot/shared/http';
-import { aiServiceError } from './ai-errors';
+import { providerReply } from './provider-api';
+import type { ProviderSettings } from './provider-settings';
 
 export type TextEvent = TextIdentity & (
   { type: 'TEXT_SELECTED' | 'TEXT_OPENED' | 'TEXT_CANCELLED' | 'TEXT_INVALIDATED' }
@@ -43,7 +43,7 @@ export function isTextPageCommand(value: unknown): value is TextPageCommand {
   return safeTextResult(value.result) !== null && value.error === undefined;
 }
 
-export async function requestText(command: TextCommand, signal: AbortSignal) {
+export async function requestText(command: TextCommand, signal: AbortSignal, provider: ProviderSettings) {
   const raw = { protocolVersion: command.protocolVersion, operation: command.operation, sessionId: command.sessionId,
     requestId: command.requestId, pageKey: command.pageKey, selectionId: command.selectionId, selectedText: command.selectedText, question: command.question };
   const clean = prepareText(raw.selectedText, raw.question);
@@ -51,16 +51,10 @@ export async function requestText(command: TextCommand, signal: AbortSignal) {
   const request = TextRequestSchema.parse({ ...raw, ...clean });
   const body = JSON.stringify(request);
   if (new TextEncoder().encode(body).byteLength > MAX_TEXT_BYTES) throw new Error('The selected text request is too large. Select a shorter passage.');
-  const response = await fetch('http://127.0.0.1:8787/v1/text/explain', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
-    signal, redirect: 'error', cache: 'no-store',
-  }).catch(() => { throw aiServiceError('connection'); });
-  const value = await readBoundedJson(response, MAX_TEXT_BYTES).catch(() => { throw aiServiceError('invalid_reply'); });
-  if (!response.ok) {
-    const error = TextErrorSchema.safeParse(value);
-    throw aiServiceError(error.success ? error.data.error.code : 'invalid_reply');
-  }
-  const parsed = validateTextResponse(value, request);
-  if (!parsed) throw aiServiceError('invalid_reply');
+  const result = await providerReply(provider, 'text', clean, signal);
+  const parsed = validateTextResponse({ protocolVersion: 1, sessionId: request.sessionId,
+    requestId: request.requestId, pageKey: request.pageKey, selectionId: request.selectionId,
+    result }, request);
+  if (!parsed) throw new Error('Klicko couldn’t use that reply safely. Try again.');
   return parsed;
 }

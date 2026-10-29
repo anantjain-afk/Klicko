@@ -5,6 +5,17 @@ import { requestText, type TextCommand } from '../../lib/text-assistant';
 import { TextIdentitySchema } from '@clickpilot/shared/text-assistant';
 import { isPageSnapshot } from '../../lib/messages';
 import { sharingPreferences, tabAccess } from '../../lib/page-access';
+import { PROVIDERS, PROVIDER_STORAGE_KEYS, readProviderStore } from '../../lib/provider-settings';
+
+async function chosenProvider() {
+  const { active, saved } = readProviderStore(await browser.storage.local.get(PROVIDER_STORAGE_KEYS));
+  const provider = active ? saved[active] : null;
+  if (!provider) throw new Error('Choose a provider, model, and API key in Settings.');
+  if (!await browser.permissions.contains({ origins: [PROVIDERS[provider.provider].origin] })) {
+    throw new Error('Provider access is missing. Save your provider again in Settings.');
+  }
+  return provider;
+}
 
 function requestDeadline(parent: AbortSignal) {
   const abort = new AbortController();
@@ -95,7 +106,11 @@ export function createPageTransport(tabId: number, textEvent: (value: unknown) =
         const before: unknown = await snapshot();
         if (!isPageSnapshot(before) || before.pageKey !== command.pageKey || before.snapshotId !== command.snapshotId) throw new Error('This page changed. Try again.');
         if (!(await sharingPreferences()).guidance || deadline.signal.aborted) throw new Error('The request was stopped.');
-        const result = await requestAssistant(command, before, tab.url!, deadline.signal);
+        const provider = await chosenProvider();
+        const result = await requestAssistant(command, before, tab.url!, deadline.signal, provider);
+        const currentProvider = await chosenProvider();
+        if (currentProvider.provider !== provider.provider || currentProvider.model !== provider.model
+          || currentProvider.apiKey !== provider.apiKey) throw new Error('Model settings changed. Ask again.');
         const latest = await activePage(); const after: unknown = await snapshot();
         if (closed || deadline.signal.aborted || latest.url !== tab.url || !isPageSnapshot(after)
           || after.pageKey !== command.pageKey || after.snapshotId !== command.snapshotId) throw new Error('This page changed. Try again.');
@@ -114,7 +129,11 @@ export function createPageTransport(tabId: number, textEvent: (value: unknown) =
         const matches = (value: unknown) => !!value && typeof value === 'object' && 'selectedText' in value && value.selectedText === command.selectedText;
         if (!matches(await check()) || deadline.signal.aborted) throw new Error('The selection changed. Select the passage again.');
         if (!(await sharingPreferences()).selectedText || deadline.signal.aborted) throw new Error('Selected-text sharing is off. Check Settings.');
-        const result = await requestText(command, deadline.signal);
+        const provider = await chosenProvider();
+        const result = await requestText(command, deadline.signal, provider);
+        const currentProvider = await chosenProvider();
+        if (currentProvider.provider !== provider.provider || currentProvider.model !== provider.model
+          || currentProvider.apiKey !== provider.apiKey) throw new Error('Model settings changed. Ask again.');
         const latest = await activePage();
         if (closed || deadline.signal.aborted || latest.url !== tab.url || !matches(await check())) throw new Error('The selection changed. Select the passage again.');
         if (deadline.signal.aborted) throw new Error('The request was stopped.');

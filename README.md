@@ -4,7 +4,7 @@
 
 ClickPilot is a Chrome extension that helps people learn how to use unfamiliar websites. Ask a question about the page you're viewing, and ClickPilot identifies the relevant on-screen control, highlights it, and guides you through the task **one step at a time**.
 
-> **Project status:** Planned / in development. This README describes the intended MVP, not features that are already implemented.
+> **Project status:** The extension is in development. The current AI path uses a provider, model, and API key saved by each user; public distribution has not been approved.
 
 ## The problem
 
@@ -52,16 +52,13 @@ User in Chrome
 React Side Panel (question, progress, consent)
     |
     +---- Chrome MV3 Service Worker
-    |        (permissions, tab events, screenshots, routing)
+    |        (permissions, tab events, provider requests)
     |
     +---- Content Script
     |        (DOM snapshot, element registry, overlays, verification)
     |
     v
-Cloudflare Worker API (Hono + Zod)
-    |
-    v
-Gemini API (page understanding and structured next-step response)
+Chosen provider API (Gemini, OpenAI, or Groq)
     |
     v
 Validated target ID -> Content Script -> On-page visual guidance
@@ -80,8 +77,8 @@ Validated target ID -> Content Script -> On-page visual guidance
 | Extension framework | WXT, Chrome Manifest V3 |
 | UI | React, TypeScript, plain CSS |
 | Browser integration | Chrome extension APIs, content scripts, Shadow DOM, SVG |
-| Backend | Cloudflare Workers, Hono |
-| AI | Google Gemini API (free-tier eligible models, subject to quotas) |
+| Local legacy API | Cloudflare Workers, Hono (development only) |
+| AI | User-selected Gemini, OpenAI, or Groq model |
 | Validation | Zod |
 | Local state | Chrome Storage API |
 | Testing | Vitest, Playwright |
@@ -96,7 +93,7 @@ The project will be built and verified in small milestones:
 2. **DOM extraction:** Gather useful visible elements and assign temporary IDs.
 3. **Overlay engine:** Draw and reposition highlights, arrows, and tooltips.
 4. **Mock guidance:** Test the complete interaction loop without an AI API.
-5. **AI integration:** Add a validated backend endpoint and Gemini-based target selection.
+5. **AI integration:** Add a validated local Gemini endpoint, then user-selected direct provider access.
 6. **Multi-step guidance:** Verify user actions, handle navigation, and recover from stale targets.
 7. **Screenshot fallback:** Add opt-in visual reasoning when necessary.
 8. **Hardening and release:** Security review, browser tests, documentation, and demo.
@@ -108,14 +105,14 @@ Each milestone requires automated checks **and manual verification in Chrome** b
 - Access supported tabs only with the appropriate user-granted permissions.
 - Avoid collecting input values, passwords, tokens, payment details, and unrelated private content.
 - Keep screenshots opt-in and avoid storing them on the backend.
-- Keep the Gemini API key on the backend, never in the extension bundle.
+- Keep user-supplied API keys out of the extension bundle, webpage messages, and logs. Saved keys remain on this device in Chrome extension storage, which is not encrypted.
 - Treat webpage text as untrusted data, not instructions to the assistant.
 - Validate AI output and confirm the selected target against the current DOM.
 - Never automate user clicks, typing, or form submissions.
 
 ## Local development
 
-The extension includes local mocked guidance, manual inspection, and the consent-based Gemini assistant. Use Node.js 22 or newer and Corepack, then run these commands from the project root:
+The extension includes local mocked guidance, manual inspection, and user-selected AI guidance. Use Node.js 22 or newer and Corepack, then run these commands from the project root:
 
 ```sh
 corepack pnpm install
@@ -137,7 +134,7 @@ To check extraction separately, choose **Manual highlights** and open `http://12
 
 For manual overlays, stay in **Manual highlights**, open `http://127.0.0.1:4173/overlay.html`, make sure ClickPilot is enabled, and inspect it. Choose **Highlight** beside Primary target. Expect a green outline, arrow, and tooltip; click the target yourself to increment the fixture counter. Try Move target, manual scrolling, browser zoom, resizing, Hide/Remove/Cover target, SPA navigation, Stop, and closing the panel. Reload and inspect between destructive checks. Full numbered verification steps are in `PROGRESS.md`; the recorded 20-case automated matrix is in `docs/overlay-test-matrix.md`.
 
-Both modes wait for you. Neither verifies task completion, clicks, types, or sends page details to an AI service. The mock acknowledges only trusted browser click events on the selected target or its descendants; synthetic page-script clicks are ignored. The manifest requests `activeTab`, `scripting`, `sidePanel`, `storage`, and `offscreen`, plus the loopback API host and optional all-site host access described below; it has no always-on content scripts. `scripting` lets the background worker inject the observer only after toolbar activation. The page registry expires after one minute and clears with Stop, navigation, or panel disconnection. Reinspect or Retry to renew it. Each overlay frame resolves the live element and checks visibility, coverage, and current page/snapshot identity; it never scrolls the target into view. Disabled, clipped, offscreen, covered, or unplaceable targets are rejected or removed. The content script uses a Shadow DOM, CSS pixels, and literal text for the tooltip, with pointer-transparent decorations.
+Both local modes wait for you. Neither verifies task completion, clicks, types, or sends page details to an AI service. The mock acknowledges only trusted browser click events on the selected target or its descendants; synthetic page-script clicks are ignored. The manifest requests `activeTab`, `scripting`, `sidePanel`, `storage`, and `offscreen`, plus optional HTTP/HTTPS site access; it has no always-on content scripts or required API host grant. `scripting` lets the background worker inject the observer only after toolbar activation. The page registry expires after one minute and clears with Stop, navigation, or panel disconnection. Reinspect or Retry to renew it. Each overlay frame resolves the live element and checks visibility, coverage, and current page/snapshot identity; it never scrolls the target into view. Disabled, clipped, offscreen, covered, or unplaceable targets are rejected or removed. The content script uses a Shadow DOM, CSS pixels, and literal text for the tooltip, with pointer-transparent decorations.
 
 Support remains limited to top-level ordinary DOM controls. Iframes, shadow-tree targets, and canvas targets are excluded. Hit testing samples the center and corners; it does not prove every pixel is unobstructed. Browser top-layer modals/popovers and unusual page transforms may hide decoration; these need site-specific verification. Actual Chrome/Brave side-panel lifecycle behavior remains a manual check.
 
@@ -145,15 +142,23 @@ The unit checks run with `corepack pnpm test`. To run the Playwright checks, fir
 
 Development uses `AGENTS.md` for coding guidelines, `docs/clickpilot-production-architecture.md` for system design, `PLAN.md` for milestones, and `PROGRESS.md` for verification status.
 
-### Local Gemini assistant (milestone 6A)
+### AI provider settings (current extension path)
 
-The **AI assistant** mode sends an original goal, fresh filtered visible controls and bounded previous-step context through a local backend to Gemini after the saved Webpage guidance choice is enabled. Guidance includes `nextStep: "none" | "after_user_action"`: final guidance makes no automatic follow-up, while intermediate guidance waits for your click and observed page changes before another reasoning request. Text-only replies pause. Optional local target checks verify step outcomes; a click or final suggestion never proves task completion. Stop clears temporary task context. No history, persistent memory or agent framework is added. It reuses existing observation, overlay and session guards, with one request at a time and a 20-step ceiling. **Mock guidance** remains a separate local mode.
+Open the extension's **Settings** (or first-use setup). Choose **Google Gemini**, **OpenAI**, or **Groq**, choose a listed model, paste your own API key, and select **Save provider**. Chrome asks for access to that provider's API origin if it has not already been granted. Each provider's key and model are saved separately in trusted extension storage. Switching back restores that provider's model and uses its saved key; leaving the key field blank keeps it. Only the selected provider receives requests, with its key in an HTTPS request header. **Remove saved key** removes only the selected provider's key. Saved keys and models persist across browser restarts, but uninstalling the extension clears local storage. Chrome extension storage is not encrypted; protect your device and browser profile. Provider availability, quotas, billing, and data handling depend on your own account. Webpage guidance and selected-text sharing still need their separate consent choices.
 
-Configure the ignored `apps/api/.dev.vars` with backend-only `GEMINI_API_KEY`, `GEMINI_MODEL` and `GUIDANCE_ENABLED=true`, then run `corepack pnpm dev:api`. The suggested initial model is `gemini-3.5-flash-lite`. Restart after changing configuration. Build/reload the extension, activate the fixture with the toolbar and choose AI assistant. See [local setup, protocol 3 contract and exact Chrome verification steps](docs/local-api.md).
+No local API server is needed for this path. The model sees a filtered site origin and visible control labels for guidance, or the selected passage and question for text help. Screenshots and input values are not sent. Model output is validated and grounded against current page elements before highlighting. No real provider call is made by the automated tests; verify each provider with your own key on synthetic public fixtures in Chrome.
 
-`corepack pnpm verify:api` runs five negative local HTTP checks without Gemini. `corepack pnpm --filter @clickpilot/api smoke:gemini` intentionally runs four real synthetic Gemini calls and may incur usage charges. Unit and browser tests mock provider responses and do not measure model accuracy. Stop the real Worker before the browser suite, which uses port 8787 for its mock API.
+### Historical local Gemini assistant (milestone 6A)
 
-The extension requests a loopback API host permission, enforces one fixed local endpoint, and requires toolbar activation and actual website access for observation. The backend uses Hono and existing Zod validation, direct REST, bounded output, abort/timeout handling, safe errors and a configuration kill switch. Secrets stay out of client bundles. Worker builds use `--dry-run`; nothing is deployed. Milestone 6A was verified by the user. Milestone 6B is implemented and awaits Chrome verification; hosting remains unapproved.
+The following setup describes the retained local development API. The current extension no longer calls this endpoint; use the provider settings above for live guidance.
+
+The original AI integration sent filtered controls through a local Worker to Gemini. Its request contract and development tests remain in `apps/api`; the current extension uses the direct provider path described above. Guidance still uses `nextStep: "none" | "after_user_action"`, validates every returned target against current page state, and never treats a click as proof of task completion. **Mock guidance** remains a separate local mode.
+
+For the historical Worker setup and protocol 3 contract, see [local API development notes](docs/local-api.md). That Worker can be run and tested separately, but it is not part of current extension setup.
+
+`corepack pnpm verify:api` runs negative local HTTP checks without Gemini. `corepack pnpm --filter @clickpilot/api smoke:gemini` intentionally makes real synthetic Gemini calls and may incur usage charges. Extension provider browser checks mock all three remote APIs and do not measure model accuracy.
+
+The retained Worker uses Hono and Zod with a backend-only Gemini secret. Worker builds use `--dry-run`; nothing is deployed. The current extension requests provider access when a user saves their selection and keeps user-supplied keys out of its bundle. Hosting remains unapproved.
 
 Try the synthetic three-step task at `http://127.0.0.1:4173/multistep.html`; follow the numbered multi-step Chrome checks in [docs/local-api.md](docs/local-api.md). Retry keeps the current step; Continue manually records your confirmation. Confirm task complete explicitly ends the task based on your confirmation. The per-tab task can continue while the sidebar is closed; see the recovery checks below.
 
@@ -192,11 +197,11 @@ Chrome controls the native permission dialog; see [optional permissions](https:/
 
 Turn ClickPilot on with the toolbar. On a supported, permitted page, select a short ordinary passage, choose **Ask ClickPilot**, and enter a question; the sidebar can stay closed. Enable **Selected-text assistance** during first-use setup or in **Settings** before pressing **Ask**. Selection and drafting stay local. A short explanation appears beside the selection and its detailed answer is shared with the sidebar. Starting guidance, Stop, Done and New chat cancel conflicting work while keeping selection available. Explicit **Stop text assistant**, deactivation, navigation or access loss stop that document’s listener. Switching tabs cancels pending selection work; returning allows a fresh selection. Closing the sidebar or worker suspension does not disable local detection. A valid unsent draft may survive in the same document; a pending request is never replayed after recovery.
 
-Use public, non-sensitive text only. Editable fields, forms, sensitive contexts and unsupported frames/shadow/PDF/canvas selections are excluded. Limits: 2,000 passage characters and 240 question characters; privacy filters are heuristic. Only the selected passage and question reach Gemini through the existing local Worker. No screenshots, voice, conversation history or persistent selected text are added. See `docs/local-api.md` for the separate text protocol and `PROGRESS.md` for verification status and Chrome steps.
+Use public, non-sensitive text only. Editable fields, forms, sensitive contexts and unsupported frames/shadow/PDF/canvas selections are excluded. Limits: 2,000 passage characters and 240 question characters; privacy filters are heuristic. Only the selected passage and question reach the chosen provider. No screenshots, voice, conversation history or persistent selected text are added. See `docs/local-api.md` for the historical text contract and `PROGRESS.md` for verification status and Chrome steps.
 
 ### Reliability and remembered sharing (UX-1)
 
-First-use setup explains Gemini sharing and offers two optional, initially unchecked choices: **Webpage guidance** and **Selected-text assistance**. Save choices even with both off to use local tools. Settings lets you change either choice; turning one off stops that assistance and prevents subsequent uploads. A request already sent may have reached Google. Preferences are versioned and stored in trusted `chrome.storage.local['clickpilot.ai-sharing']`; no task text, selected passages or responses are stored there. Existing per-panel consents are not silently migrated into opt-in.
+First-use setup explains provider sharing and offers two optional, initially unchecked choices: **Webpage guidance** and **Selected-text assistance**. Save choices even with both off to use local tools. Settings lets you change either choice; turning one off stops that assistance and prevents subsequent uploads. A request already sent may have reached the chosen provider. Preferences are versioned and stored in trusted `chrome.storage.local['clickpilot.ai-sharing']`; the selected provider is stored under `clickpilot.active-provider` and each saved model/key under `clickpilot.provider.<provider>`. No task text, selected passages or responses are stored there. Existing per-panel consents are not silently migrated into opt-in.
 
 Chrome toolbar activation remains separate from AI consent. In current-tab fallback mode, trusted `chrome.storage.session` records the activated tab and origin, rechecks actual scripting access, and removes the record when access is lost. Global mode additionally uses the optional all-site host grant and a session-scoped ON flag. These records confer no browser permission. No heartbeat or persistent chat history is used.
 
