@@ -1,8 +1,10 @@
 # ClickPilot progress
 
-Updated: 28 October 2026.
+Updated: 29 October 2026.
 
 ## Current status
+
+Provider/model/user-key milestone: **AWAITING USER VERIFICATION**. The user approved this feature alone on 29 October 2026. Gemini, OpenAI, and Groq now retain separate saved model/key records; guidance and selected-text requests use only the active provider. A user-reported overwrite bug was corrected during verification. The ZIP and website deployment remain unapproved. See the newest entry below for checks, limits, and Chrome steps.
 
 Extension display-name change to Klicko: **VERIFIED by the user**, 28 October 2026. The user confirmed the name change in Chrome and authorized pushing it to `final-touchs`. The manifest name/action title, side panel, buddy, selection UI, status/error messages, accessible labels, and extension page titles now say Klicko. The two API instructions that identify the assistant also say Klicko so generated answers do not inherit the old product name. Internal `clickpilot` IDs, storage keys, package names, and protocols remain stable. No dependency or browser permission changed.
 
@@ -1198,3 +1200,55 @@ Browser tests use local fixtures, mocked responses and a disposable copy with al
 5. If practical, revoke the optional site access in Chrome's extension settings and try again. Denial should retain only the current-tab fallback with a TAB badge; no other tab should silently gain access. Inspect extension Errors/service-worker console for unexpected errors, and report the affected page and visible badge if either toolbar operation still fails.
 
 **VERIFIED by the user.** Commit and push to `final-touchs` were explicitly requested; no later milestone or deployment is authorized.
+
+## User-selected AI provider, model, and key — 29 October 2026
+
+Status: **AWAITING USER VERIFICATION**. The user confirmed the intended three-provider Settings flow and authorized implementing only this feature. No ZIP, website deployment, commit, push, publication, or production resource change was made.
+
+### What changed
+
+- First-use setup and Settings let the user choose Google Gemini, OpenAI, or Groq, select a listed model, and save, replace, or remove its API key. During initial verification the user found that saving another provider overwrote the prior key. The corrected version stores one model/key record per provider and a separate active-provider marker. The input stays masked and empty after saving; switching back restores that provider's model and can reuse its key. Provider/model/key are strictly validated and stored in trusted `chrome.storage.local`, separate from the two existing sharing choices.
+- Saving requests access only to the chosen provider's HTTPS origin via the existing optional-host declaration. Denial leaves the key unsaved. The required loopback API host grant was removed; current extension guidance and selected-text requests now go directly from the background worker to the selected provider. The local Cloudflare Worker remains for historical development and is not deployed.
+- The existing privacy filter and shared result schemas still bound content and reject invalid output. Guidance target IDs must belong to the filtered inventory and are rechecked against the live page by the content script. Stop, navigation, consent withdrawal, and changed provider settings invalidate pending work. No page action is automated.
+- README and local API notes distinguish current user-key setup from the retained local Worker. Provider API documentation used for the request formats and model choices: [Gemini models](https://ai.google.dev/gemini-api/docs/models), [OpenAI models](https://developers.openai.com/api/docs/models), [Groq structured outputs](https://console.groq.com/docs/structured-outputs).
+
+### Actual checks
+
+| Exact command/check | Result |
+| --- | --- |
+| `corepack pnpm typecheck` | Exit 0: shared, API, and extension TypeScript checks. |
+| `corepack pnpm lint` | Exit 0. |
+| `corepack pnpm test` | Exit 0: 92 API and 135 extension unit tests passed. New tests cover the three direct request formats, key omission from bodies, malformed output, and saved-setting validation. |
+| `WRANGLER_LOG_PATH=/tmp/clickpilot-provider-wrangler-final.log corepack pnpm build` | Exit 0: extension built; retained API Worker build was dry-run only. |
+| `corepack pnpm exec playwright test tests/e2e/provider-settings.spec.ts --workers=1 --output=/tmp/clickpilot-provider-e2e-final-results` | Exit 0: 5 browser tests passed. They cover all three provider routes, saved selection after panel reload, selected-text routing, key removal, and denied provider access. Provider responses and keys are synthetic. |
+| `corepack pnpm exec playwright test tests/e2e/global-activation.spec.ts --workers=1 --output=/tmp/clickpilot-provider-global-results` | Exit 0: 2 activation regression tests passed. |
+| Built manifest and bundle inspection | Manifest has no required host permission and retains optional HTTP/HTTPS site access. No `127.0.0.1:8787`, `fixture-private-key`, or `GEMINI_API_KEY` marker was found in built JS/HTML/manifest. |
+| `git diff --check` | Exit 0 after the source and documentation updates. |
+| Broader `corepack pnpm exec playwright test --workers=2 --output=/tmp/clickpilot-provider-all-results` | Stopped after historical browser specs failed on prior UI/local-backend assumptions. This is **not a passing full suite**. The new provider suite and focused activation regression above pass. The older assistant/text/buddy browser fixtures still target port 8787 and need migration; some mock-guidance selectors were already stale. Log: `/tmp/clickpilot-provider-all.log`. |
+
+The first sandboxed browser attempt could not bind localhost (`EPERM`); the focused browser checks ran with approved local execution. An interrupted broader run left a fixture server on port 4173; it was stopped before the final focused rerun. No real provider key or live API call was used. Headless tests pregrant provider hosts in a disposable manifest; the denied-permission test stubs Chrome's response. They do not verify the native permission prompt, provider account/model access, quotas, billing, Chrome restart persistence, or an actual side panel. [Chrome storage](https://developer.chrome.com/docs/extensions/reference/api/storage) persists local settings until extension removal but does not encrypt them; [OpenAI's API guidance](https://developers.openai.com/api/reference/overview) recommends server-held keys. The user-requested local-key mode is a disclosed security tradeoff.
+
+### User-reported provider-key overwrite fix
+
+The reported cause was confirmed: the first implementation wrote all providers to `clickpilot.provider-settings`, so saving a second provider replaced the first record. Settings and the background worker now use `clickpilot.provider.gemini`, `clickpilot.provider.openai`, and `clickpilot.provider.groq`, plus `clickpilot.active-provider`. Save and remove affect the chosen provider only. A valid old single-provider record is read and migrated on the next save. If an earlier build already replaced a key, that overwritten value is unavailable and must be entered again.
+
+| Exact command/check | Result |
+| --- | --- |
+| `corepack pnpm typecheck` | Exit 0. |
+| `corepack pnpm lint` | Exit 0. |
+| `corepack pnpm test` | Exit 0: 92 API and 137 extension unit tests passed, including separate-provider and legacy-record reads. |
+| `WRANGLER_LOG_PATH=/tmp/clickpilot-provider-keys-wrangler.log corepack pnpm build` | Exit 0: extension built; retained API Worker dry-run only. |
+| `corepack pnpm exec playwright test tests/e2e/provider-settings.spec.ts --workers=1 --output=/tmp/clickpilot-provider-keys-e2e-results` | Exit 0: 7 browser tests passed. New tests cover Groq → Gemini → Groq key/model retention and migration of the prior record; provider keys and replies were synthetic. The first sandbox attempt could not bind localhost, so this run used approved local execution. |
+| Built manifest and bundle inspection | Required hosts remain absent and optional hosts remain unchanged. No `127.0.0.1:8787`, `fixture-groq-key`, `fixture-gemini-key`, or `GEMINI_API_KEY` marker was found in built JS/HTML/manifest. |
+| `git diff --check` | Exit 0. |
+
+### Numbered manual Chrome verification
+
+1. Run `corepack pnpm build`, reload `apps/extension/.output/chrome-mv3` at `chrome://extensions`, and start `python3 -m http.server 4173 --directory tests/fixtures`. Open `http://127.0.0.1:4173/guidance.html`, activate Klicko with the toolbar, and open its Settings. Expect provider, model, and masked API-key fields. Blank or duplicated controls fail.
+2. Choose Groq and a listed model, paste your Groq key, and select **Save provider**. Grant Chrome access to Groq's API origin if prompted. Expect a saved message and an empty masked field. Choose Gemini, select a model, paste your Gemini key, and save. Expect the same saved message and empty field. A visible key or unexpected broad permission prompt fails.
+3. Switch the Provider dropdown back to Groq. Expect its earlier model and “A key is saved for this provider”; leave the key blank and select **Save provider**. Reload the extension, reopen Settings, and expect Groq still selected with its model and saved-key note. Switch to Gemini and expect its model and saved-key note too. If either provider asks for its key again, the fix has failed.
+4. With Groq active, enable **Webpage guidance**, ask **“Find Primary target”** on the fixture, and inspect the page. Expect one highlight and instruction, with the counter still at zero until you click yourself. In the extension service-worker Network panel, expect one HTTPS request to Groq and none to Gemini or port 8787. Switch to Gemini, save with its key field blank, ask again, and expect only a Gemini request. Use only fixture data; do not share Network captures containing authorization headers. Missing guidance, the wrong provider, or an automatic click fails.
+5. Open `http://127.0.0.1:4173/text.html`, enable **Selected-text assistance**, select the public fixture paragraph, choose **Ask Klicko**, type a question, then press **Ask**. Expect no provider request until Ask, then an answer from the selected provider. A selection alone causing a request fails.
+6. Close and reopen Chrome with the same installed extension. Expect both providers' saved models/keys to remain usable after selecting and saving each one with a blank key field. With Groq selected, choose **Remove saved key** and ask again. Expect a clear setup error and no Groq request. Switch to Gemini; its saved-key note must still appear, and after saving it should still answer. Revoke a provider's site access in Chrome settings and save again; denial must leave a new key unsaved. Check extension Errors and the service-worker console for unexpected errors without copying credentials.
+
+**STOP: AWAITING USER VERIFICATION.** The project's `AGENTS.md` requires user confirmation before another milestone. ZIP packaging and website deployment remain unapproved.
