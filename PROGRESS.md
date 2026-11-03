@@ -4,6 +4,8 @@ Updated: 3 November 2026.
 
 ## Current status
 
+Vercel website build repair: **AWAITING USER VERIFICATION**. The user-reported `tsc: command not found` failure came from a website lockfile with local links outside the Vercel root directory. A regenerated standalone lockfile passed clean install, build, and browser checks. The next Vercel build and live download URL still need verification. See the newest entry below.
+
 Downloadable Chrome ZIP milestone: **VERIFIED by the user** on 3 November 2026. The packaging command builds the extension ZIP, copies it into the website, and enables the site download link. The user confirmed the package works and authorized committing and pushing these changes to `website`. Website deployment, store publication, and production resource changes remain unapproved. See the newest entry below.
 
 Provider/model/user-key milestone: **VERIFIED by the user** on 29 October 2026. Gemini, OpenAI, and Groq retain separate saved model/key records; guidance and selected-text requests use only the active provider. The user confirmed the overwrite fix works and authorized committing and pushing these changes to `website`. ZIP packaging was approved later; website deployment remains unapproved. See the newest entry below for checks and limits.
@@ -1289,3 +1291,25 @@ Status: **VERIFIED by the user** on 3 November 2026. After confirming the ZIP wo
 The exact ZIP loaded in automated Chromium, and the user confirmed the package works correctly in their browser. Brave installation was not separately evidenced. The local website serves the archive; making it publicly downloadable still requires a separately approved website deployment and its release prerequisites.
 
 **STOP: VERIFIED.** The user authorized the `website` branch commit and push. Do not start deployment or a later milestone without separate approval.
+
+## Vercel website build repair — 3 November 2026
+
+Status: **AWAITING USER VERIFICATION**. The user supplied a Vercel log for branch `website` at commit `fe87377`: npm installed 10 packages, then `npm run build` failed with `sh: line 1: tsc: command not found`.
+
+The checked-in `website/package-lock.json` had 10 `link: true` entries pointing to local `../node_modules/.pnpm/` and `../prototypes/robot-playground/node_modules/` paths. TypeScript and Vite were among those links. The old lockfile described this machine's symlinks instead of a standalone install. In an isolated temporary copy of `website/`, npm generated a registry-backed lockfile with 143 package entries and no parent-directory links; only that lockfile was copied into the repository. `website/package.json` and all application, extension, and ZIP files remain unchanged.
+
+| Exact command/check | Result |
+| --- | --- |
+| `npm install --package-lock-only --ignore-scripts --no-audit --no-fund --fetch-retries=0 --fetch-timeout=15000` in the isolated copy | Exit 0; produced registry-resolved TypeScript 5.9.3 and Vite 8.3.5 entries with integrity hashes. The first sandboxed registry attempt stalled; approved network access completed the command. |
+| `npm ci --no-audit --no-fund --fetch-retries=0 --fetch-timeout=30000` in the isolated copy | Exit 0: 118 packages installed from the new lockfile, including `tsc` and Vite. |
+| `npm run typecheck`, `npm run lint`, `npm run build` in the isolated copy | Exit 0 for all; Vite built `dist/` successfully. |
+| `npm run test:e2e` in the isolated copy | Exit 0: 5 Chrome tests passed, including the ZIP download. |
+| `git diff --check` plus lockfile inspection | Exit 0; the checked-in lockfile exactly matches the clean-copy lockfile, has 143 package entries, and contains no linked or parent-directory packages. |
+
+### Vercel verification after the lockfile reaches `website`
+
+1. Start a new Vercel build from the updated `website` commit. Expect npm to install the build tools and `npm run build` to finish with Vite's successful build message. `tsc: command not found` means Vercel is still building the old commit or using a custom install setting that omits development dependencies.
+2. Open the deployed site, choose **Get Klicko → Download Extension**, and confirm the downloaded file is `klicko-chromium.zip`. Also open `/downloads/klicko-chromium.zip` directly on the deployment domain; a 404, HTML page, or missing download means the wrong root/output directory was deployed.
+3. Extract the ZIP and confirm `manifest.json` is directly inside the extracted folder. In Chrome, use **Developer mode → Load unpacked** and select that folder. Expect Klicko without extension errors; loading a source ZIP or a parent folder fails.
+
+The real Vercel build has not yet been rerun with this lockfile. The user must confirm the deployed result before this repair is marked verified. The prior explicit authorization to commit and push this `website` release covers its immediate verification repair.

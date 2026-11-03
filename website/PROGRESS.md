@@ -4,6 +4,10 @@ Updated: 3 November 2026.
 
 Status: **VERIFIED by the user** for the downloadable ZIP on 3 November 2026. The website's Download Extension control serves a built Chrome extension archive from `public/downloads/klicko-chromium.zip`. The user confirmed it works and authorized committing and pushing to `website`. The original standalone website entry below is historical. No deployment or production resource change was authorized.
 
+## Vercel build failure and lockfile repair — 3 November 2026
+
+Status: **AWAITING USER VERIFICATION**. Vercel installed 10 packages and failed at `tsc: command not found` on commit `fe87377`. The previous website lockfile contained links into local directories outside `website/`. A new lockfile generated in a clean copy contains registry packages instead of those links. The clean copy passed `npm ci` (118 packages), `npm run typecheck`, `npm run lint`, `npm run build`, and `npm run test:e2e` (5 Chrome tests). Only `website/package-lock.json` was changed for this repair. The next Vercel build and ZIP download on the deployed domain still need user verification.
+
 ## ZIP download preparation — 2 November 2026
 
 - The root `corepack pnpm package:extension` command rebuilds the extension with WXT and copies the generated Chrome ZIP into the website. The site config enables the download link; installation and FAQ copy describe the user-supplied provider key.

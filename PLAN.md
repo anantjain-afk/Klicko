@@ -1,6 +1,6 @@
 # ClickPilot implementation plan
 
-Current work: the downloadable Chrome ZIP and website download control were verified by the user on 3 November 2026. The user authorized committing and pushing this package to `website`. Website deployment remains separate, unapproved work. Earlier milestone gates below are historical.
+Current work: the downloadable Chrome ZIP was verified and pushed to `website`. A user-provided Vercel log on 3 November 2026 exposed a broken standalone website lockfile; repair only that deployment build failure and await verification of the next Vercel build. Earlier milestone gates below are historical.
 
 Status update — 25 October 2026: the user confirmed milestone 6B is complete and approved scoped 7A implementation with the strict result union and retained side-panel explanation. The 7A branch was based on 6A; it has been fast-forwarded to existing 6B commit `109e04f` without creating a commit. Historical milestone records below are retained.
 
@@ -509,3 +509,9 @@ The user approved packaging the current verified extension as a ZIP and making i
 Acceptance: the website download returns the built ZIP; it passes archive integrity checks, contains only production extension files, and loads from its extracted folder in Chrome. The built manifest has no required host grant or localhost API endpoint, and the bundle contains no key or fixture marker. Run relevant extension and website checks, record actual evidence and numbered Chrome verification in `PROGRESS.md`, then stop at **AWAITING USER VERIFICATION**. No commit, push, production website deployment, Chrome Web Store publication, or new feature is authorized by this milestone.
 
 The user subsequently confirmed “its working correctly” on 3 November 2026 and explicitly authorized the commit and push to `website`. This verification does not authorize website deployment or store publication.
+
+## Vercel website build repair — 3 November 2026
+
+The user's Vercel build of `website` failed at `tsc --noEmit` because `tsc` was absent after npm installed only 10 packages. The checked-in website lockfile was generated from local symlinks into directories outside `website/`, including TypeScript and Vite. Vercel's configured root directory cannot use those local links. Regenerate `website/package-lock.json` in an isolated copy from the pinned `website/package.json`, then verify a fresh `npm ci`, typecheck, lint, build, and website browser tests from that copy. Do not change package versions, app code, extension code, browser permissions, or the ZIP.
+
+Record exact evidence in `PROGRESS.md`. The next Vercel build must install the website's build tools, finish `npm run build`, and serve the existing download ZIP. The user's earlier explicit authorization to commit and push this `website` release covers this immediate verification repair. Stop at **AWAITING USER VERIFICATION** after pushing; the live Vercel result still needs user verification.

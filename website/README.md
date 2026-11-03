@@ -49,4 +49,6 @@ The actual mascot SVG was copied from `brag-output/composition/assets/robot.svg`
 
 Create a Vercel project using this repository, set **Root Directory** to `website`, **Framework Preset** to Vite, **Build Command** to `npm run build`, and **Output Directory** to `dist`. Vercel can install the pinned dependencies from `package.json`. No website environment variables or backend are needed for this static site.
 
+The committed `website/package-lock.json` must contain registry-resolved packages, including the TypeScript and Vite development dependencies. If a deployment reports `tsc: command not found`, check that it uses the latest `website` commit and that no custom install command or environment setting omits development dependencies.
+
 Before public deployment, add the formal privacy policy and replace the relative `og:image` in `index.html` with an absolute URL using the final domain. The website build itself does not deploy or publish anything.
