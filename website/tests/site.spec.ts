@@ -1,15 +1,21 @@
 import { expect, test } from '@playwright/test';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, stat } from 'node:fs/promises';
 
-test('navigation and installation links are honest', async ({ page }) => {
+test('navigation and extension download work', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: /Meet Klicko/ })).toBeVisible();
   await expect(page.locator('a.button-primary', { hasText: 'Get Klicko' }).first()).toHaveAttribute('href', '#install');
   await page.locator('.hero-actions').getByRole('link', { name: /Get Klicko/ }).click();
   await expect(page).toHaveURL(/#install$/);
   await expect(page.getByRole('heading', { name: /Get Klicko/ })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Download Extension/ })).toBeDisabled();
-  await expect(page.getByText('Download pending production checks.')).toBeVisible();
+  const downloadLink = page.getByRole('link', { name: /Download Extension/ });
+  await expect(downloadLink).toHaveAttribute('href', '/downloads/klicko-chromium.zip');
+  const downloadPromise = page.waitForEvent('download');
+  await downloadLink.click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe('klicko-chromium.zip');
+  expect(await download.failure()).toBeNull();
+  expect((await stat(await download.path())).size).toBeGreaterThan(1_000_000);
   await expect(page.locator('code').filter({ hasText: 'chrome://extensions' })).toBeVisible();
   await expect(page.locator('code').filter({ hasText: 'brave://extensions' })).toBeVisible();
   await expect(page.locator('code').filter({ hasText: 'manifest.json' })).toBeVisible();

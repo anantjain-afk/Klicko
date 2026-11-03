@@ -1,10 +1,12 @@
 # ClickPilot progress
 
-Updated: 29 October 2026.
+Updated: 3 November 2026.
 
 ## Current status
 
-Provider/model/user-key milestone: **VERIFIED by the user** on 29 October 2026. Gemini, OpenAI, and Groq retain separate saved model/key records; guidance and selected-text requests use only the active provider. The user confirmed the overwrite fix works and authorized committing and pushing these changes to `website`. ZIP packaging and website deployment remain unapproved. See the newest entry below for checks and limits.
+Downloadable Chrome ZIP milestone: **VERIFIED by the user** on 3 November 2026. The packaging command builds the extension ZIP, copies it into the website, and enables the site download link. The user confirmed the package works and authorized committing and pushing these changes to `website`. Website deployment, store publication, and production resource changes remain unapproved. See the newest entry below.
+
+Provider/model/user-key milestone: **VERIFIED by the user** on 29 October 2026. Gemini, OpenAI, and Groq retain separate saved model/key records; guidance and selected-text requests use only the active provider. The user confirmed the overwrite fix works and authorized committing and pushing these changes to `website`. ZIP packaging was approved later; website deployment remains unapproved. See the newest entry below for checks and limits.
 
 Extension display-name change to Klicko: **VERIFIED by the user**, 28 October 2026. The user confirmed the name change in Chrome and authorized pushing it to `final-touchs`. The manifest name/action title, side panel, buddy, selection UI, status/error messages, accessible labels, and extension page titles now say Klicko. The two API instructions that identify the assistant also say Klicko so generated answers do not inherit the old product name. Internal `clickpilot` IDs, storage keys, package names, and protocols remain stable. No dependency or browser permission changed.
 
@@ -1252,3 +1254,38 @@ The reported cause was confirmed: the first implementation wrote all providers t
 6. Close and reopen Chrome with the same installed extension. Expect both providers' saved models/keys to remain usable after selecting and saving each one with a blank key field. With Groq selected, choose **Remove saved key** and ask again. Expect a clear setup error and no Groq request. Switch to Gemini; its saved-key note must still appear, and after saving it should still answer. Revoke a provider's site access in Chrome settings and save again; denial must leave a new key unsaved. Check extension Errors and the service-worker console for unexpected errors without copying credentials.
 
 **STOP: VERIFIED.** The user authorized the `website` branch commit and push. ZIP packaging and website deployment remain unapproved.
+
+## Downloadable Chrome ZIP — 2 November 2026
+
+Status: **VERIFIED by the user** on 3 November 2026. After confirming the ZIP works correctly, the user explicitly requested a commit and push to `website`. Website deployment and store publication remain unapproved.
+
+### Completed
+
+- Added `corepack pnpm package:extension` to run WXT's Chrome ZIP build and copy the archive to `website/public/downloads/klicko-chromium.zip` without adding a dependency. The website now downloads that exact archive from its existing Install section. Installation and FAQ copy explain the user's own provider key and manual unpacked loading.
+- Updated the website release notes to describe the current direct-provider extension instead of the historical localhost API. A later download from a different extracted folder may use a different extension identity, so locally saved keys may need to be entered again.
+- The archive is 2.06 MB with `manifest.json` at its root. Its SHA-256 is `9ca57c12f4a0e5e40d4ba4d0feb9e0dea83856d840e656ff91df435b99ca0e25`. This checksum identifies the local artifact prepared here; regenerate it after any extension change.
+
+### Actual checks
+
+| Exact command/check | Result |
+| --- | --- |
+| `corepack pnpm package:extension` | Exit 0: WXT built Chrome MV3 and produced the site-hosted ZIP. |
+| `unzip -t website/public/downloads/klicko-chromium.zip` | Exit 0: every archive entry passed integrity checking. `unzip -Z -1` showed `manifest.json` at archive root and only built extension assets. |
+| `shasum -a 256 website/public/downloads/klicko-chromium.zip apps/extension/.output/clickpilotextension-0.1.0-chrome.zip` | Exit 0: both archives had the same checksum above. |
+| Built manifest and bundle inspection | MV3 manifest names Klicko, has no required host grant, and contains optional HTTP/HTTPS access. No `127.0.0.1:8787`, `GEMINI_API_KEY`, or synthetic fixture-key marker was found in built JS/HTML/manifest. |
+| `corepack pnpm typecheck` / `corepack pnpm lint` / `corepack pnpm test` | Exit 0 for all: 92 API and 137 extension unit tests passed. |
+| `npm run typecheck` / `npm run lint` / `npm run build` in `website/` | Exit 0 for all; Vite built the site with the ZIP in its public assets. |
+| `npm run test:e2e` in `website/` | Exit 0: 5 Chrome browser tests passed, including an actual ZIP download and its filename/size. The first sandbox run could not bind `127.0.0.1:4174` (`EPERM`); the approved local run passed. |
+| Extracted-ZIP Chromium smoke check | Exit 0: extracted the site-hosted ZIP into a temporary folder; Chromium loaded its MV3 worker, read Klicko v0.1.0 from the manifest, and opened `sidepanel.html` with title Klicko. The first sandboxed browser launch failed; the approved local launch passed. |
+| `node --check scripts/package-extension.mjs`, `cmp website/public/downloads/klicko-chromium.zip website/dist/downloads/klicko-chromium.zip`, and `git diff --check` | Exit 0 for all; the production website build contains the exact archive prepared for download. |
+
+### Manual Chrome verification
+
+1. From the repo root, run `corepack pnpm package:extension`. In `website/`, run `npm run dev` and open `http://127.0.0.1:4174`. Choose **Get Klicko → Download Extension**. Expect a file named `klicko-chromium.zip`. A disabled button, missing file, or source-code ZIP fails.
+2. Extract the downloaded ZIP to a folder you will keep. That folder must directly contain `manifest.json`, `background.js`, `sidepanel.html`, and asset folders. Open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select that folder. Expect a Klicko card without extension errors. Selecting the ZIP itself or a parent folder fails.
+3. On a public test page, activate Klicko and open the sidebar. Choose Gemini, OpenAI, or Groq, add your own key in Settings, grant only the provider access Chrome requests, and enable the desired sharing choice. Ask for guidance on a harmless page. Expect a provider response and a highlight, with no automatic webpage click. If a provider call fails, inspect the extension's **Errors** and service-worker console without copying key headers.
+4. Close and reopen Chrome with the extracted folder still in place. Expect the extension to load and its saved provider choice to remain available. If replacing an earlier unpacked install with a different folder changes the extension identity, enter your key again.
+
+The exact ZIP loaded in automated Chromium, and the user confirmed the package works correctly in their browser. Brave installation was not separately evidenced. The local website serves the archive; making it publicly downloadable still requires a separately approved website deployment and its release prerequisites.
+
+**STOP: VERIFIED.** The user authorized the `website` branch commit and push. Do not start deployment or a later milestone without separate approval.

@@ -1,8 +1,17 @@
 # Klicko website progress
 
-Updated: 29 October 2026.
+Updated: 3 November 2026.
 
-Status: **AWAITING USER VERIFICATION**. The standalone website milestone is implemented under `website/` only. No extension source, root progress file, Git history, deployment, or production resource was changed.
+Status: **VERIFIED by the user** for the downloadable ZIP on 3 November 2026. The website's Download Extension control serves a built Chrome extension archive from `public/downloads/klicko-chromium.zip`. The user confirmed it works and authorized committing and pushing to `website`. The original standalone website entry below is historical. No deployment or production resource change was authorized.
+
+## ZIP download preparation — 2 November 2026
+
+- The root `corepack pnpm package:extension` command rebuilds the extension with WXT and copies the generated Chrome ZIP into the website. The site config enables the download link; installation and FAQ copy describe the user-supplied provider key.
+- `unzip -t` passed; `manifest.json` is at the ZIP root. The site-hosted and WXT archives had matching SHA-256 checksums. The exact extracted ZIP loaded as Klicko v0.1.0 in Chromium and opened its side panel.
+- `npm run typecheck`, `npm run lint`, and `npm run build` passed. `npm run test:e2e` passed 5 Chrome tests, including the download. The first sandboxed browser run could not bind localhost; approved local execution passed.
+- The user confirmed the package works correctly in their browser. Brave installation was not separately evidenced. A public website deployment still needs user approval, a reviewed privacy policy URL, and an absolute Open Graph image URL for the final domain.
+
+The following website implementation record is historical.
 
 ## Completed
 
@@ -25,7 +34,9 @@ The first sandboxed browser run could not bind `127.0.0.1:4174` (`EPERM`). An ap
 
 `npm install --offline --no-audit --no-fund` could not resolve uncached npm metadata. A networked install also did not complete in this restricted environment. For local checks, ignored `website/node_modules/` symlinks point to the repository's already installed versions of the exact pinned dependencies. A fresh standalone checkout should run `npm install` with registry access. No dependency or lockfile was added outside `website/`.
 
-## Release blockers
+## Release blockers recorded on 29 October 2026 (historical)
+
+The first two items were resolved by the later user-key and ZIP milestones recorded above; the remaining public deployment items still apply.
 
 1. The extension's current manifest grants `http://127.0.0.1:8787/*`; guidance and text requests use the same local HTTP backend. A public ZIP needs a separately approved production HTTPS backend change, bundle/secret audit, and unpacked Chrome/Brave verification.
 2. No verified release ZIP or Chrome Web Store listing URL is available. The Download Extension button remains disabled.

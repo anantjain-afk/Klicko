@@ -25,15 +25,23 @@ The browser checks use installed Google Chrome. `npm run preview` serves the pro
 
 ## Release links
 
-Edit [`src/site-config.ts`](src/site-config.ts):
+From the repository root, refresh the site-hosted ZIP after each extension change:
 
-- `releaseZipUrl`: point to a verified ZIP of the **built Chromium extension**, not the source repository. Put a site-hosted ZIP at `public/downloads/klicko-chromium.zip` and use `/downloads/klicko-chromium.zip`, or use an approved HTTPS release URL. The ZIP's extracted folder must contain `manifest.json` at its top level.
+```sh
+corepack pnpm package:extension
+```
+
+This runs WXT's Chrome ZIP build and copies its output to `public/downloads/klicko-chromium.zip`. The archive contains built extension files with `manifest.json` at its root. The website serves it at `/downloads/klicko-chromium.zip`. Rebuild the website after refreshing the ZIP so `dist/` contains the matching archive. The command does not deploy or publish anything.
+
+Edit [`src/site-config.ts`](src/site-config.ts) for other release links:
+
+- `releaseZipUrl` currently points to the site-hosted ZIP. The primary **Download Extension** control downloads that archive.
 - `chromeStoreUrl`: when the extension is published, set this URL. The primary install action will prefer the store URL automatically. The site's **Get Klicko** links continue to lead to the install section.
 - `privacyPolicyUrl`: link to the reviewed, published formal policy. The page's **Privacy & control** section is a product explanation, not a complete legal policy.
 
-The Download Extension button is disabled until a verified release URL is configured. It does not point to a source checkout or a placeholder URL.
+The current extension sends AI requests directly to the provider selected in Settings. Each user adds their own Gemini, OpenAI, or Groq key; no backend service or key is bundled. Provider usage may be charged to that user's account. The ZIP is a manual, developer-mode install: download, extract, open `chrome://extensions` or `brave://extensions`, enable Developer mode, choose **Load unpacked**, and select the extracted folder containing `manifest.json`. Keep that folder in place while using the extension. Installing a later ZIP from a different folder may create a different extension identity and will not carry over locally saved keys.
 
-Before making a ZIP public, change the extension to a production HTTPS backend in a separately approved extension task. Verify its manifest and built files contain no secrets, localhost API endpoint, or development-only host permissions, then test that exact package as an unpacked extension in Chrome and Brave. The current extension still uses `http://127.0.0.1:8787`; **do not publish that build**.
+Before public deployment, verify the exact extracted archive in Chrome and Brave, review the formal privacy policy, and set its URL. Website deployment, repository push, and store publication require separate approval.
 
 The actual mascot SVG was copied from `brag-output/composition/assets/robot.svg`. The 25-second launch film and poster were copied from `brag-output/brag.mp4` and `brag-output/brag.jpg`. The film is labelled illustrative because its UI scenes are recreated for the launch video. The website's guided dashboard is a local scripted simulation.
 
@@ -41,4 +49,4 @@ The actual mascot SVG was copied from `brag-output/composition/assets/robot.svg`
 
 Create a Vercel project using this repository, set **Root Directory** to `website`, **Framework Preset** to Vite, **Build Command** to `npm run build`, and **Output Directory** to `dist`. Vercel can install the pinned dependencies from `package.json`. No website environment variables or backend are needed for this static site.
 
-Before public deployment, add the verified release link and formal privacy policy, and replace the relative `og:image` in `index.html` with an absolute URL using the final domain. The website build itself does not deploy or publish anything.
+Before public deployment, add the formal privacy policy and replace the relative `og:image` in `index.html` with an absolute URL using the final domain. The website build itself does not deploy or publish anything.

@@ -28,7 +28,7 @@ const faqs = [
   },
   {
     question: 'Is Klicko free?',
-    answer: 'Pricing and public availability have not been announced. The Chrome release link will appear here when one is available.',
+    answer: 'The extension ZIP is free to download. AI requests use your own Gemini, OpenAI, or Groq API key; your provider may charge for usage.',
   },
   {
     question: 'Does it support voice?',
@@ -160,7 +160,7 @@ function Install() {
   return <section className="install-section" id="install" aria-labelledby="install-title">
     <div className="page-wrap">
       <div className="install-top">
-        <div><h2 id="install-title">Get Klicko.<br /><em>Try it in your browser.</em></h2><p>Install the extension manually in Chrome or Brave. The download will open here once the release build is verified.</p></div>
+        <div><h2 id="install-title">Get Klicko.<br /><em>Try it in your browser.</em></h2><p>Download the ZIP, extract it, and load the folder in Chrome or Brave. Choose your AI provider and add your own API key in Settings.</p></div>
         <div className="install-download">
           <span className="install-file-icon" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="M16 5v16m-6-6 6 6 6-6M6 23v4h20v-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg></span>
           <div><strong>Klicko for Chromium</strong><span>{chromeStoreUrl ? 'Chrome Web Store listing' : 'Release ZIP · built extension files'}</span></div>

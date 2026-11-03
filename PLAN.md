@@ -1,6 +1,6 @@
 # ClickPilot implementation plan
 
-Current work: the user approved a scoped provider/model/API-key milestone on 29 October 2026. It is implemented and awaits manual Chrome verification. The downloadable ZIP and website deployment remain separate, unapproved work. Earlier milestone gates below are historical.
+Current work: the downloadable Chrome ZIP and website download control were verified by the user on 3 November 2026. The user authorized committing and pushing this package to `website`. Website deployment remains separate, unapproved work. Earlier milestone gates below are historical.
 
 Status update — 25 October 2026: the user confirmed milestone 6B is complete and approved scoped 7A implementation with the strict result union and retained side-panel explanation. The 7A branch was based on 6A; it has been fast-forwarded to existing 6B commit `109e04f` without creating a commit. Historical milestone records below are retained.
 
@@ -501,3 +501,11 @@ The user approved implementing this feature alone, before any ZIP or deployment.
 This explicitly supersedes the earlier backend-only-key architecture for this user-key mode. The local Cloudflare Worker remains a development artifact, with no current extension calls to it and no deployment. Remove the required loopback host grant; request only the selected provider's HTTPS origin as an optional host grant on Save. The existing optional site-access behavior remains separate. No new package, screenshot, autonomous action, account, or hosted service is included.
 
 Acceptance: settings survive browser restart/reload, show no saved key in the field, allow replacement/removal, and block saving if provider access is denied. Both AI features use the selected provider/model. Missing/revoked credentials, denied host access, malformed model output, stale page state, and consent loss fail safely. Run workspace typecheck, lint, unit tests, build, focused provider and activation browser tests, inspect the built manifest/bundle, and provide numbered real-Chrome checks. Automated provider replies use fixtures; live API behavior and native permission prompts require user verification. Finish at AWAITING USER VERIFICATION and stop. ZIP packaging, site link, publication, commit, push, and deployment need later explicit approval.
+
+## Downloadable Chrome ZIP — approved 2 November 2026
+
+The user approved packaging the current verified extension as a ZIP and making it downloadable from the existing website. Use WXT's Chrome ZIP command to build the exact production extension, then copy that archive to `website/public/downloads/klicko-chromium.zip`. Keep `manifest.json` at the archive root so users can extract it and choose **Load unpacked**. Add one repeatable root command, enable the existing download link, update the install copy and release notes, and test the actual downloadable archive. The current user-key model needs no hosted API or new browser permission. The site and extension remain separate builds.
+
+Acceptance: the website download returns the built ZIP; it passes archive integrity checks, contains only production extension files, and loads from its extracted folder in Chrome. The built manifest has no required host grant or localhost API endpoint, and the bundle contains no key or fixture marker. Run relevant extension and website checks, record actual evidence and numbered Chrome verification in `PROGRESS.md`, then stop at **AWAITING USER VERIFICATION**. No commit, push, production website deployment, Chrome Web Store publication, or new feature is authorized by this milestone.
+
+The user subsequently confirmed “its working correctly” on 3 November 2026 and explicitly authorized the commit and push to `website`. This verification does not authorize website deployment or store publication.

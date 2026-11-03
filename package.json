@@ -4,6 +4,7 @@
   "packageManager": "pnpm@10.34.7",
   "scripts": {
     "build": "corepack pnpm --filter @clickpilot/extension build && corepack pnpm --filter @clickpilot/api build",
+    "package:extension": "node scripts/package-extension.mjs",
     "dev:api": "corepack pnpm --filter @clickpilot/api dev",
     "lint": "eslint apps/extension apps/api packages/shared",
     "test": "corepack pnpm -r --if-present test",
