@@ -7,6 +7,7 @@ import {
 } from '@clickpilot/shared/guidance';
 import { containsSensitiveText, prepareProviderContext, type ProviderContext } from '@clickpilot/shared/privacy';
 import { reportValidationFailure } from './diagnostics';
+import { transcribeVoice, type VoiceEnv } from './voice';
 
 const MESSAGES: Record<ErrorCode, string> = {
   invalid_request: 'The request does not match the guidance contract.',
@@ -65,7 +66,7 @@ async function readJson(request: Request, limit = MAX_REQUEST_BYTES, version = 3
 // Tests may inject deterministic replies; the runnable path uses backend-only secrets.
 export function createApp(provider?: (context: ProviderContext, signal: AbortSignal) => Promise<unknown>,
   textProvider?: (context: { selectedText: string; question: string }, signal: AbortSignal) => Promise<unknown>) {
-  const app = new Hono<{ Bindings: GeminiEnv }>();
+  const app = new Hono<{ Bindings: GeminiEnv & VoiceEnv }>();
   app.use('*', async (c, next) => {
     if (!['127.0.0.1', 'localhost', '[::1]'].includes(new URL(c.req.url).hostname)) return errorResponse('local_only', 403, c.req.path === '/v1/text/explain' ? 1 : 3);
     c.header('Cache-Control', 'no-store');
@@ -140,6 +141,7 @@ export function createApp(provider?: (context: ProviderContext, signal: AbortSig
     }
   });
   app.all('/v1/text/explain', () => errorResponse('method_not_allowed', 405, 1));
+  app.post('/v1/voice/transcribe', (c) => transcribeVoice(c.req.raw, c.env ?? {}));
   app.notFound(() => errorResponse('not_found', 404));
   app.onError((_, c) => errorResponse('internal_error', 500, c.req.path === '/v1/text/explain' ? 1 : 3));
   return app;

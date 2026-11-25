@@ -1313,3 +1313,35 @@ The checked-in `website/package-lock.json` had 10 `link: true` entries pointing 
 3. Extract the ZIP and confirm `manifest.json` is directly inside the extracted folder. In Chrome, use **Developer mode → Load unpacked** and select that folder. Expect Klicko without extension errors; loading a source ZIP or a parent folder fails.
 
 The real Vercel build has not yet been rerun with this lockfile. The user must confirm the deployed result before this repair is marked verified. The prior explicit authorization to commit and push this `website` release covers its immediate verification repair.
+
+## Voice milestone 1 — Local transcript preview — 26 November 2026
+
+Status: **VERIFIED by the user** on 26 November 2026. The user confirmed that Chrome's microphone permission prompt, the physical Option + Command shortcut on macOS, and live Whisper transcription worked. The implementation is available as a separate unpacked Chrome build for the local fixture.
+
+- The buddy has a **Voice setup** control that explains the upload, requests microphone and loopback Worker access, and enables voice for the current Chrome session. Hold Option + Command until **Listening** appears. Releasing either key stops the microphone, sends a short clip for transcription, and displays **Transcript** in the buddy. Escape, tab switches, hiding Klicko, and a 30-second recording limit discard the unfinished clip.
+- The existing offscreen audio document records in memory and prepares 16 kHz mono PCM WAV. The local Worker validates the clip and calls Cloudflare Workers AI with voice activity detection. Audio and transcript are handled in memory. The transcript preview has no connection to task submission or page inspection.
+- `build:voice` writes `apps/extension/.output/chrome-mv3-voice-preview`. The ordinary build has identical manifest fields and contains no preview shortcut, microphone APIs, or voice endpoint. Typed questions and provider settings use their existing paths.
+
+### Actual checks
+
+| Exact command or check | Result |
+| --- | --- |
+| `corepack pnpm typecheck` | Exit 0 across shared, API and extension. |
+| `corepack pnpm lint` | Exit 0. |
+| `corepack pnpm test` | Exit 0. 96 API and 137 extension unit tests passed. |
+| `WRANGLER_LOG_PATH=/private/tmp/clickpilot-build-wrangler.log corepack pnpm build` | Exit 0. Regular Chrome build and top-level Worker dry-run passed. WXT reported its chunk-size warning. |
+| `corepack pnpm --filter @clickpilot/extension build:voice --level warn` | Exit 0. Separate Chromium preview build passed with the same chunk-size warning. |
+| `WRANGLER_LOG_PATH=/private/tmp/clickpilot-voice-worker-dryrun.log corepack pnpm --filter @clickpilot/api exec wrangler deploy --env voice --dry-run --outdir dist/voice` | Exit 0. Wrangler resolved the `AI` binding and `VOICE_PREVIEW` variable. The command exited after bundling. |
+| `CLICKPILOT_TEST_VOICE=1 corepack pnpm exec playwright test tests/e2e/voice.spec.ts` | Exit 0 outside the sandbox, which blocks local server binding. One Chromium test passed with a fake microphone and local transcript stub. It checked disabled-by-default voice, both key orders, Escape, tab-switch cancellation, one upload, WAV format and transcript display. |
+| `corepack pnpm exec playwright test tests/e2e/provider-settings.spec.ts tests/e2e/global-activation.spec.ts --workers=2` | Exit 0 outside the sandbox. Nine Chromium regressions passed. |
+| `git diff --check` and build inspection | No whitespace errors. Parsed manifests match. Voice endpoint and mic markers appear only in the preview bundle. |
+
+### Manual Chrome verification
+
+1. From the repository root, run `corepack pnpm --filter @clickpilot/extension build:voice`. At `chrome://extensions`, temporarily turn off the regular Klicko install if present, enable Developer mode, and load `apps/extension/.output/chrome-mv3-voice-preview` unpacked. Expect one Klicko instance on the fixture.
+2. Start `python3 -m http.server 4173 --bind localhost --directory tests/fixtures`. In another terminal, run `corepack pnpm --filter @clickpilot/api dev:voice`. If prompted, complete Wrangler's Cloudflare sign-in. Stop an ordinary local API process if it already owns port 8787. The Worker runs locally, while Whisper uses the signed-in account's remote Workers AI binding.
+3. Open `http://localhost:4173/guidance.html` and activate Klicko through its toolbar button. Keep the sidebar closed. Open the buddy, choose **Voice setup**, click **Allow microphone and enable voice**, and allow Chrome's prompts. Expect **Voice is enabled for this browser session**. Close the setup tab and return focus to the fixture.
+4. Hold Option + Command until **Listening** appears, say “Show me how to switch accounts,” and release either key. Try both key orders. Expect **Transcribing**, then **Transcript** with the spoken words. The microphone indicator should go away on release. An assistant reply or a webpage highlight would be a failure for the preview.
+5. Start another recording and press Escape. Repeat while switching to a different Chrome tab. Return and release the keys. Expect the microphone to stop and no new transcript to appear. Repeat a normal hold afterward to confirm a fresh recording works. A mic indicator that stays on or a late transcript is a failure.
+
+Cancellation and tab-switch behavior are covered by the automated Chromium check above. This status update records the user's live verification. Release-to-send requires separate approval.

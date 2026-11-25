@@ -515,3 +515,13 @@ The user subsequently confirmed “its working correctly” on 3 November 2026 a
 The user's Vercel build of `website` failed at `tsc --noEmit` because `tsc` was absent after npm installed only 10 packages. The checked-in website lockfile was generated from local symlinks into directories outside `website/`, including TypeScript and Vite. Vercel's configured root directory cannot use those local links. Regenerate `website/package-lock.json` in an isolated copy from the pinned `website/package.json`, then verify a fresh `npm ci`, typecheck, lint, build, and website browser tests from that copy. Do not change package versions, app code, extension code, browser permissions, or the ZIP.
 
 Record exact evidence in `PROGRESS.md`. The next Vercel build must install the website's build tools, finish `npm run build`, and serve the existing download ZIP. The user's earlier explicit authorization to commit and push this `website` release covers this immediate verification repair. Stop at **AWAITING USER VERIFICATION** after pushing; the live Vercel result still needs user verification.
+
+## Voice milestone 1 — Local transcript preview
+
+**Status: VERIFIED by the user** on 26 November 2026. The user confirmed the microphone prompt, macOS shortcut, and live transcription in Chrome.
+
+The user approved this slice on 26 November 2026 and asked to keep the existing assistant flow. On the local guidance fixture, hold Option + Command with the sidebar closed. Release either key to preview a transcript in the buddy. This milestone ends at the transcript. Submitting spoken questions to the assistant is a separate milestone.
+
+Use a dedicated WXT preview build, the existing offscreen audio document, Chrome microphone permission, and a session opt-in that explains the upload. The Worker runs locally with a dedicated Workers AI binding to Whisper Large V3 Turbo. Audio is captured in memory, capped at 30 seconds, normalized to 16 kHz mono PCM WAV, and uploaded once on release. Use the existing optional HTTP host permission to grant access to the loopback Worker on demand.
+
+Automated and live verification are recorded in `PROGRESS.md`. Release-to-send requires separate approval.

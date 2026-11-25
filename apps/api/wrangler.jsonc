@@ -8,5 +8,14 @@
   "workers_dev": false,
   "preview_urls": false,
   "observability": { "enabled": false },
-  "dev": { "ip": "127.0.0.1", "port": 8787, "local_protocol": "http" }
+  "dev": { "ip": "127.0.0.1", "port": 8787, "local_protocol": "http" },
+  "env": {
+    "voice": {
+      "workers_dev": false,
+      "preview_urls": false,
+      "observability": { "enabled": false },
+      "vars": { "VOICE_PREVIEW": "enabled" },
+      "ai": { "binding": "AI", "remote": true }
+    }
+  }
 }

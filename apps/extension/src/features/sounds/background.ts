@@ -1,8 +1,9 @@
 import { browser } from 'wxt/browser';
 import { isSoundRequest, type SoundName } from '../../lib/sounds';
+import { VOICE_PREVIEW } from '../voice/preview';
 
 let creating: Promise<void> | undefined;
-async function ensureAudioDocument() {
+export async function ensureAudioDocument() {
   if (creating) return creating;
   const contexts = await browser.runtime.getContexts({
     contextTypes: ['OFFSCREEN_DOCUMENT'], documentUrls: [browser.runtime.getURL('/audio.html')],
@@ -10,8 +11,9 @@ async function ensureAudioDocument() {
   if (contexts.length) return;
   if (!creating) {
     creating = browser.offscreen.createDocument({
-      url: '/audio.html', reasons: ['AUDIO_PLAYBACK'],
-      justification: 'Play bundled Klicko interaction sounds, including startup and close cues.',
+      url: '/audio.html', reasons: VOICE_PREVIEW ? ['AUDIO_PLAYBACK', 'USER_MEDIA'] : ['AUDIO_PLAYBACK'],
+      justification: VOICE_PREVIEW ? 'Play interaction sounds and record a microphone clip during an enabled voice preview.'
+        : 'Play bundled Klicko interaction sounds, including startup and close cues.',
     }).finally(() => { creating = undefined; });
   }
   return creating;

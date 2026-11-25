@@ -7,7 +7,8 @@
     "./guidance": "./src/guidance.ts",
     "./privacy": "./src/privacy.ts",
     "./http": "./src/http.ts",
-    "./text-assistant": "./src/text-assistant.ts"
+    "./text-assistant": "./src/text-assistant.ts",
+    "./voice": "./src/voice.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

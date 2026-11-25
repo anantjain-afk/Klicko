@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/prepare-companion.mjs && wxt build -b chrome",
+    "build:voice": "node scripts/prepare-companion.mjs && wxt build -b chrome --mode voice-preview",
     "test": "vitest run",
     "typecheck": "node scripts/prepare-companion.mjs && wxt prepare && tsc --noEmit"
   },

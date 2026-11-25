@@ -9,6 +9,8 @@ import { createTaskCoordinator, type TabFlags, type TaskCoordinator } from './co
 import { createPageTransport } from './page-transport';
 import { NAVIGATION_SETTLE_MS } from './session';
 import { ALL_SITE_ORIGINS, GLOBAL_ACTIVATION_KEY, globallyEnabled, hasAllSiteAccess, supportedPage } from '../../lib/activation';
+import { startVoicePreview } from '../voice/background';
+import { VOICE_PREVIEW } from '../voice/preview';
 
 interface Entry {
   task: TaskCoordinator;
@@ -174,6 +176,8 @@ export function startBackgroundTasks() {
     if (await globallyEnabled()) return true;
     return !globalOnly && !!entry && (await entry).task.snapshot().buddyVisible;
   }
+  if (VOICE_PREVIEW) startVoicePreview(async (tabId) =>
+    await activationAllowed(tabId, false) && (await entryFor(tabId)).task.snapshot().buddyVisible);
   function scheduleRecovery(entry: Entry) {
     clearTimeout(entry.recoveryTimer);
     entry.recoveryTimer = setTimeout(() => entry.task.resumeNavigation(), NAVIGATION_SETTLE_MS);

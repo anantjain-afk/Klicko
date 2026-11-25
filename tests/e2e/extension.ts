@@ -3,8 +3,8 @@ import { resolve } from 'node:path';
 import { cp, mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 
-export async function launchExtension(firstUse = false, allSiteAccess = false) {
-  let extensionPath = resolve('apps/extension/.output/chrome-mv3');
+export async function launchExtension(firstUse = false, allSiteAccess = false, options?: { path: string; args: string[] }) {
+  let extensionPath = resolve(options?.path ?? 'apps/extension/.output/chrome-mv3');
   let testCopy: string | undefined;
   if (allSiteAccess) {
     // Headless Chrome cannot operate its native optional-permission dialog. A
@@ -19,7 +19,7 @@ export async function launchExtension(firstUse = false, allSiteAccess = false) {
   const context = await chromium.launchPersistentContext('', {
     channel: 'chromium',
     viewport: { width: 1100, height: 800 },
-    args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`],
+    args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`, ...(options?.args ?? [])],
   });
   const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
   if (testCopy) context.on('close', () => { void rm(testCopy!, { recursive: true, force: true }); });

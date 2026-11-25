@@ -6,6 +6,8 @@ import { createCompanion, companionMood } from './companion';
 import { mountRobot } from './mount-robot';
 import { animate } from 'motion';
 import { playSound } from '../../lib/sounds';
+import { createVoiceControls } from '../voice/buddy';
+import { VOICE_FIXTURE, VOICE_PREVIEW } from '../voice/preview';
 import companionCss from './companion.css?inline';
 import buddyCss from './buddy.css?inline';
 import { BUDDY_SIZE, clampBuddy, defaultBuddyPosition, popupPosition, type Position, type Viewport } from './position';
@@ -67,9 +69,9 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
   const name = document.createElement('span'); name.textContent = 'Klicko'; name.className = 'name';
   const tools = document.createElement('div'); tools.className = 'tools';
   const openSidebar = button('Open sidebar', () => openPanel(false), 'icon'); openSidebar.replaceChildren(icon('M14 4h6v6m0-6L10 14M10 4H4v16h16v-6'));
-  const close = button('Close ask card', () => { playSound('clicky-text-close'); expanded = false; render(); launcher.focus({ preventScroll: true }); }, 'icon');
+  const close = button('Close ask card', () => { playSound('clicky-text-close'); voice?.clear(); expanded = false; render(); launcher.focus({ preventScroll: true }); }, 'icon');
   close.replaceChildren(icon('m6 6 12 12M18 6 6 18'));
-  const hide = button('Hide Klicko', () => { playSound('agent-close'); command('hide'); visible = false; launchSoundArmed = true; render(); }, 'settings');
+  const hide = button('Hide Klicko', () => { playSound('agent-close'); voice?.clear(); command('hide'); visible = false; launchSoundArmed = true; render(); }, 'settings');
   tools.append(openSidebar, close); heading.append(name, tools);
   const greeting = document.createElement('h2'); greeting.className = 'greeting'; greeting.textContent = 'What would you like help with?';
   const reply = document.createElement('p'); reply.className = 'reply';
@@ -95,6 +97,13 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
   const settings = button('Open Settings', () => openPanel(true), 'settings');
   const footer = document.createElement('div'); footer.className = 'actions'; footer.append(hide);
   popup.append(heading, greeting, reply, replyLink, status, form, actions, note, settings, footer);
+  const voice = VOICE_PREVIEW && location.href === VOICE_FIXTURE
+    ? createVoiceControls(() => visible && connected && !disposed && valid() && location.href === VOICE_FIXTURE, () => {
+      if (!visible || disposed) return;
+      expanded = true;
+      render();
+    }) : undefined;
+  if (voice) popup.insertBefore(voice.element, form);
   surface.shadow.append(style, launcher, popup);
 
   function viewport(): Viewport {
@@ -148,6 +157,7 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
   }
   function openPanel(settings: boolean) {
     if (!connected || !port) return;
+    voice?.clear();
     port.postMessage({ type: 'OPEN_SIDEBAR', settings });
     docked = true; expanded = false; render();
   }
@@ -229,7 +239,7 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
         if (isTaskView(value)) {
           if (view?.epoch === value.epoch && value.revision < view.revision) return;
           view = value; connected = true; attempts = 0; visible = value.buddyVisible; localError = '';
-          if (!visible) launchSoundArmed = true;
+          if (!visible) { voice?.clear(); launchSoundArmed = true; }
           if (submitting && value.goal === submitting) { draft = ''; input.value = ''; submitting = null; }
           else if (value.state.kind === 'error') submitting = null;
           if (value.source === 'text' && ['composing', 'requesting'].includes(value.textState.kind)) expanded = false;
@@ -244,6 +254,7 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
       nextPort.onDisconnect.addListener(() => {
         void browser.runtime.lastError;
         if (disposed || port !== nextPort) return;
+        voice?.clear();
         port = null; connected = false; submitting = null; render();
         if (visible && ++attempts <= 3) reconnectTimer = setTimeout(connect, [250, 1000, 2500][attempts - 1]);
       });
@@ -251,6 +262,7 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
     } catch { connected = false; render(); }
   }
   function pageChanged() {
+    voice?.clear();
     expanded = false; draft = ''; input.value = ''; submitting = null; position = null; docked = false;
     if (port) port.postMessage({ type: 'ATTACH', pageKey: pageKey() }); render();
   }
@@ -259,6 +271,7 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
     if (dragged) { dragged = false; return; }
     playSound(expanded ? 'clicky-text-close' : 'clicky-text-open');
     clickSignal++; docked = false; expanded = !expanded; attempts = 0; connect(); render();
+    if (!expanded) voice?.clear();
     if (expanded) input.focus({ preventScroll: true });
   });
   launcher.addEventListener('pointerdown', (event) => {
@@ -300,6 +313,7 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
   surface.shadow.addEventListener('keydown', (event) => {
     if (event instanceof KeyboardEvent && event.key === 'Escape') {
       event.preventDefault(); if (expanded) playSound('clicky-text-close');
+      voice?.clear();
       expanded = false; render(); launcher.focus({ preventScroll: true });
     }
     event.stopPropagation();
@@ -334,15 +348,17 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
     avoidSelection(rect: DOMRect | null) {
       if (disposed) return;
       selectionRect = rect;
-      if (rect) expanded = false;
+      if (rect) { voice?.clear(); expanded = false; }
       render();
     },
     hide() {
+      voice?.clear();
       visible = false; expanded = false; draft = ''; input.value = ''; view = null;
       clearTimeout(reconnectTimer); port?.disconnect(); port = null; connected = false;
       launchSoundArmed = true; render(); surface.host.remove();
     },
     dispose() {
+      voice?.dispose();
       disposed = true; clearTimeout(reconnectTimer); port?.disconnect(); placementAnimation?.stop(); popupAnimation?.stop();
       robot?.dispose(); surface.host.remove(); reducedMotion.removeEventListener('change', motionChanged);
       window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); window.removeEventListener('focus', focus);
