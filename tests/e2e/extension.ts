@@ -3,18 +3,25 @@ import { resolve } from 'node:path';
 import { cp, mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 
-export async function launchExtension(firstUse = false, allSiteAccess = false, options?: { path: string; args: string[] }) {
+export async function launchExtension(firstUse = false, allSiteAccess = false, options?: {
+  path: string;
+  args: string[];
+  prepareCopy?: (path: string) => Promise<void>;
+}) {
   let extensionPath = resolve(options?.path ?? 'apps/extension/.output/chrome-mv3');
   let testCopy: string | undefined;
-  if (allSiteAccess) {
+  if (allSiteAccess || options?.prepareCopy) {
     // Headless Chrome cannot operate its native optional-permission dialog. A
     // disposable copy pregrants host access; production keeps it optional.
     testCopy = await mkdtemp(resolve(tmpdir(), 'clickpilot-global-test-'));
     await cp(extensionPath, testCopy, { recursive: true }); extensionPath = testCopy;
-    const path = resolve(extensionPath, 'manifest.json');
-    const manifest = JSON.parse(await readFile(path, 'utf8'));
-    manifest.host_permissions = ['http://*/*', 'https://*/*'];
-    await writeFile(path, JSON.stringify(manifest));
+    if (allSiteAccess) {
+      const path = resolve(extensionPath, 'manifest.json');
+      const manifest = JSON.parse(await readFile(path, 'utf8'));
+      manifest.host_permissions = ['http://*/*', 'https://*/*'];
+      await writeFile(path, JSON.stringify(manifest));
+    }
+    await options?.prepareCopy?.(extensionPath);
   }
   const context = await chromium.launchPersistentContext('', {
     channel: 'chromium',

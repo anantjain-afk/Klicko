@@ -8,6 +8,8 @@ import { animate } from 'motion';
 import { playSound } from '../../lib/sounds';
 import { createVoiceControls } from '../voice/buddy';
 import { VOICE_FIXTURE, VOICE_PREVIEW } from '../voice/preview';
+
+const QUESTION_LIMIT = 240;
 import companionCss from './companion.css?inline';
 import buddyCss from './buddy.css?inline';
 import { BUDDY_SIZE, clampBuddy, defaultBuddyPosition, popupPosition, type Position, type Viewport } from './position';
@@ -31,7 +33,7 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
   let attempts = 0;
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   let draft = '';
-  let submitting: string | null = null;
+  let submitting: { goal: string; taskId: string; typedDraft?: string } | null = null;
   let localError = '';
   let position: Position | null = null;
   let selectionRect: DOMRect | null = null;
@@ -79,7 +81,7 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
   const status = document.createElement('p'); status.className = 'status'; status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
   const form = document.createElement('form');
   const label = document.createElement('label'); label.className = 'sr'; label.htmlFor = 'clickpilot-ask'; label.textContent = 'Your question';
-  const input = document.createElement('textarea'); input.id = label.htmlFor; input.placeholder = 'Ask Klicko…'; input.maxLength = 240; input.rows = 2; input.autocomplete = 'off';
+  const input = document.createElement('textarea'); input.id = label.htmlFor; input.placeholder = 'Ask Klicko…'; input.maxLength = QUESTION_LIMIT; input.rows = 2; input.autocomplete = 'off';
   input.addEventListener('input', () => { draft = input.value; render(); });
   input.addEventListener('focus', () => render());
   input.addEventListener('blur', () => render());
@@ -102,7 +104,7 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
       if (!visible || disposed) return;
       expanded = true;
       render();
-    }) : undefined;
+    }, submitVoice) : undefined;
   if (voice) popup.insertBefore(voice.element, form);
   surface.shadow.append(style, launcher, popup);
 
@@ -151,9 +153,12 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
     popup.style.left = `${location.x}px`; popup.style.top = `${location.y}px`;
   }
   function command(action: TaskAction, goal?: string) {
-    if (!connected || !port || !view) { connect(); return; }
-    try { port.postMessage({ type: 'TASK_COMMAND', action, id: crypto.randomUUID(), epoch: view.epoch, taskId: view.taskId,
-      ...(goal === undefined ? {} : { goal }) }); } catch { connected = false; render(); }
+    if (!connected || !port || !view) { connect(); return false; }
+    try {
+      port.postMessage({ type: 'TASK_COMMAND', action, id: crypto.randomUUID(), epoch: view.epoch, taskId: view.taskId,
+        ...(goal === undefined ? {} : { goal }) });
+      return true;
+    } catch { connected = false; render(); return false; }
   }
   function openPanel(settings: boolean) {
     if (!connected || !port) return;
@@ -162,9 +167,19 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
     docked = true; expanded = false; render();
   }
   function submit() {
-    if (!draft.trim() || submitting || !connected || !view?.guidanceConsent) return;
+    if (submitQuestion(draft.trim(), draft)) voice?.cancelActive();
+  }
+  function submitVoice(question: string) {
+    if (!view?.guidanceConsent) return 'Enable Webpage guidance in Settings to send spoken questions.';
+    if (question.length > QUESTION_LIMIT) return 'Try a shorter question.';
+    return submitQuestion(question) ? '' : 'Couldn’t send. Try asking again.';
+  }
+  function submitQuestion(goal: string, typedDraft?: string) {
+    if (!goal || goal.length > QUESTION_LIMIT || submitting || !connected || !view?.guidanceConsent) return false;
+    if (!command('start', goal)) return false;
     playSound('clicky-text-send');
-    submitting = draft.trim(); localError = ''; command('start', submitting); render();
+    submitting = { goal, taskId: view.taskId, typedDraft }; localError = ''; render();
+    return true;
   }
   function showPopup(show: boolean) {
     if (show === popupShown) return;
@@ -238,10 +253,14 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
         if (disposed || port !== nextPort) return;
         if (isTaskView(value)) {
           if (view?.epoch === value.epoch && value.revision < view.revision) return;
+          if (view && (view.epoch !== value.epoch || view.taskId !== value.taskId
+            || view.guidanceConsent !== value.guidanceConsent)) voice?.cancelActive();
           view = value; connected = true; attempts = 0; visible = value.buddyVisible; localError = '';
           if (!visible) { voice?.clear(); launchSoundArmed = true; }
-          if (submitting && value.goal === submitting) { draft = ''; input.value = ''; submitting = null; }
-          else if (value.state.kind === 'error') submitting = null;
+          if (submitting && value.taskId !== submitting.taskId) {
+            if (value.goal === submitting.goal && draft === submitting.typedDraft) { draft = ''; input.value = ''; }
+            submitting = null;
+          } else if (value.state.kind === 'error') submitting = null;
           if (value.source === 'text' && ['composing', 'requesting'].includes(value.textState.kind)) expanded = false;
           render();
         } else if (value && typeof value === 'object' && 'type' in value) {

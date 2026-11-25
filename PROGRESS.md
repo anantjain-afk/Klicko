@@ -1345,3 +1345,29 @@ Status: **VERIFIED by the user** on 26 November 2026. The user confirmed that Ch
 5. Start another recording and press Escape. Repeat while switching to a different Chrome tab. Return and release the keys. Expect the microphone to stop and no new transcript to appear. Repeat a normal hold afterward to confirm a fresh recording works. A mic indicator that stays on or a late transcript is a failure.
 
 Cancellation and tab-switch behavior are covered by the automated Chromium check above. This status update records the user's live verification. Release-to-send requires separate approval.
+
+## Voice milestone 2 — Release-to-send — 26 November 2026
+
+**Status: VERIFIED by the user** on 26 November 2026. The user confirmed that release-to-send works in Chrome.
+
+The preview buddy sends a nonempty transcript of up to 240 characters through the same submission handler as typed questions. The existing provider, webpage context, privacy checks, and guidance pipeline handle the request. With Webpage guidance off, the buddy displays the transcript and explains how to enable sharing. The new voice setup asks for a fresh opt-in and describes where audio, transcript, and page context go.
+
+Spoken questions preserve unsent typed drafts. Escape, losing focus, switching tabs, deactivation, and replacing the current task can discard a pending voice result. Guidance still waits for the user to click the highlighted control. The release-to-send controls are scoped to the local fixture in the dedicated voice preview build.
+
+| Exact command or check | Result |
+| --- | --- |
+| `corepack pnpm typecheck` | Exit 0 across the workspace. |
+| `corepack pnpm lint` | Exit 0. |
+| `corepack pnpm test` | Exit 0. 96 API and 137 extension unit tests passed. |
+| `corepack pnpm --filter @clickpilot/extension build:voice --level warn` | Exit 0. WXT reported the existing chunk-size warning. |
+| `WRANGLER_LOG_PATH=/private/tmp/clickpilot-build-wrangler.log corepack pnpm build` | Exit 0. Regular extension and Worker dry-run passed. |
+| `CLICKPILOT_TEST_VOICE=1 corepack pnpm exec playwright test tests/e2e/voice.spec.ts tests/e2e/provider-settings.spec.ts tests/e2e/global-activation.spec.ts --workers=2` | Exit 0 outside the sandbox. All 10 Chromium tests passed. The voice scenario used a fake microphone and local transcript and provider stubs. It covered consent, cancellation before release and during transcription, one request per question, an answer, a highlight with zero clicks, draft preservation, and typed submission. |
+| `git diff --check` and bundle inspection | Exit 0. Both manifests match. Release-to-send and the transcription endpoint are absent from the regular extension bundle. |
+
+### Manual Chrome verification
+
+1. Rebuild with `corepack pnpm --filter @clickpilot/extension build:voice`. Reload the unpacked voice preview at `chrome://extensions` and refresh `http://localhost:4173/guidance.html`. Keep the fixture server and `corepack pnpm --filter @clickpilot/api dev:voice` running.
+2. Activate Klicko on the fixture and open **Voice setup** to opt in again for release-to-send. In Klicko Settings, confirm that the selected provider has a saved key and **Webpage guidance** is enabled. Close setup and the sidebar and return focus to the fixture.
+3. Hold Option + Command, wait for **Listening**, say “Find the primary target,” and release. Expect the transcript and a highlight without pressing Enter. The fixture should still say **Clicks: 0**.
+4. Ask “What buttons are visible on this page?” the same way. Expect a text reply. Then start another recording and press Escape before releasing. Expect no new transcript, reply, or highlight from the cancelled recording.
+5. Turn off **Webpage guidance** in Settings and repeat a spoken request. Expect the transcript and a message about enabling Webpage guidance. A new assistant reply or highlight in this state is a failure.

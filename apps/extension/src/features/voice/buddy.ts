@@ -1,7 +1,7 @@
 import { browser, type Browser } from 'wxt/browser';
 import { isVoiceMessage, VOICE_PAGE_PORT, VOICE_SETUP, voiceMessages } from './preview';
 
-export function createVoiceControls(canRecord: () => boolean, reveal: () => void) {
+export function createVoiceControls(canRecord: () => boolean, reveal: () => void, sendTranscript: (text: string) => string) {
   const element = document.createElement('div');
   const setup = document.createElement('button');
   setup.id = 'clickpilot-voice-setup';
@@ -47,12 +47,16 @@ export function createVoiceControls(canRecord: () => boolean, reveal: () => void
         if (port !== current || !isVoiceMessage(message)) return;
         if (message.type === 'listening') {
           phase = 'listening';
-          show('Listening… Release either key to transcribe.');
+          show('Listening… Release either key to ask Klicko.');
         } else if (message.type === 'transcribing') {
           show('Transcribing…');
         } else if (message.type === 'transcript') {
+          if (phase !== 'finishing' || !canRecord() || document.hidden || !document.hasFocus()) return clear();
           stop();
-          show(`Transcript: ${message.text}`);
+          const text = message.text.trim();
+          if (!text) return show(voiceMessages.empty);
+          const notice = sendTranscript(text);
+          show(`Transcript: ${text}${notice ? ` · ${notice}` : ''}`);
         } else if (message.type === 'cancelled') {
           clear();
         } else if (message.type === 'error') {
@@ -110,6 +114,7 @@ export function createVoiceControls(canRecord: () => boolean, reveal: () => void
   return {
     element,
     clear,
+    cancelActive,
     dispose() {
       clear();
       window.removeEventListener('keydown', keyDown, true);

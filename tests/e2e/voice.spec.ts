@@ -1,8 +1,10 @@
 import { createServer } from 'node:http';
+import { readFile, readdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { test, expect, type Page } from '@playwright/test';
 import { activateToolbar, launchExtension } from './extension';
 
-test.skip(process.env.CLICKPILOT_TEST_VOICE !== '1', 'Requires the local voice-preview build and port 8787.');
+test.skip(process.env.CLICKPILOT_TEST_VOICE !== '1', 'Requires the local voice-preview build.');
 
 // Playwright selectors cannot pierce the buddy's closed shadow root.
 async function buddyNode(page: Page, key: string, value: string) {
@@ -28,14 +30,19 @@ async function clickBuddy(page: Page, key: string, value: string) {
   } finally { await cdp.detach(); }
 }
 
-async function voiceStatus(page: Page) {
-  const { node, cdp } = await buddyNode(page, 'id', 'clickpilot-voice-status');
+async function buddyText(page: Page, key: string, value: string) {
+  const { node, cdp } = await buddyNode(page, key, value);
   await cdp.detach();
   return node.children?.map((child) => child.nodeValue).join('') ?? '';
 }
+const voiceStatus = (page: Page) => buddyText(page, 'id', 'clickpilot-voice-status');
 
-test('hold-to-talk previews one transcript and cancels interrupted clips', async () => {
+test('release sends a spoken question through the existing assistant with consent', async () => {
   const uploads: Buffer[] = [];
+  const questions: string[] = [];
+  let transcript = 'What is the capital of Japan?';
+  let deferTranscript = false;
+  let finishTranscript: (() => void) | undefined;
   const server = createServer(async (request, response) => {
     if (request.url !== '/v1/voice/transcribe' || request.method !== 'POST'
       || request.headers['content-type'] !== 'audio/wav' || request.headers['x-klicko-voice'] !== 'preview') {
@@ -44,19 +51,42 @@ test('hold-to-talk previews one transcript and cancels interrupted clips', async
     const chunks: Buffer[] = [];
     for await (const chunk of request) chunks.push(chunk);
     uploads.push(Buffer.concat(chunks));
-    response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ text: 'Switch accounts.' }));
+    if (deferTranscript) await new Promise<void>((resolve) => { finishTranscript = resolve; });
+    response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ text: transcript }));
   });
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
-    server.listen(8787, '127.0.0.1', resolve);
+    server.listen(0, '127.0.0.1', resolve);
   });
+  const address = server.address();
+  if (!address || typeof address === 'string') throw new Error('Transcript stub did not bind.');
   let context: Awaited<ReturnType<typeof launchExtension>>['context'] | undefined;
   try {
     const extension = await launchExtension(false, true, {
       path: 'apps/extension/.output/chrome-mv3-voice-preview',
       args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'],
+      async prepareCopy(path) {
+        // Leave the developer's live Worker and the original unpacked build alone.
+        const chunks = join(path, 'chunks');
+        const audio = (await readdir(chunks)).find((name) => /^audio-.*\.js$/.test(name));
+        if (!audio) throw new Error('Voice-preview audio bundle is missing.');
+        const file = join(chunks, audio);
+        const code = await readFile(file, 'utf8');
+        const endpoint = '127.0.0.1:8787/v1/voice/transcribe';
+        if (!code.includes(endpoint)) throw new Error('Voice-preview endpoint is missing.');
+        await writeFile(file, code.replace(endpoint, `127.0.0.1:${address.port}/v1/voice/transcribe`));
+      },
     });
     context = extension.context;
+    await context.route('https://api.groq.com/openai/v1/chat/completions', async (route) => {
+      const input = JSON.parse(route.request().postDataJSON().messages[1].content);
+      questions.push(input.userGoal);
+      const target = input.elements.find((item: { name: string }) => item.name === 'Primary target');
+      const result = input.userGoal === 'Find the primary target'
+        ? { kind: 'guidance', targetId: target.id, nextStep: 'none', instruction: 'Click Primary target.', message: 'Use the primary control.' }
+        : { kind: 'answer', message: 'Tokyo is the capital of Japan.' };
+      await route.fulfill({ json: { choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: JSON.stringify(result) } }] } });
+    });
     const page = await context.newPage();
     await page.goto('http://localhost:4173/guidance.html');
     await page.bringToFront();
@@ -104,21 +134,88 @@ test('hold-to-talk previews one transcript and cancels interrupted clips', async
     await page.keyboard.up('Meta');
     expect(uploads).toHaveLength(0);
 
-    await page.keyboard.down('Meta');
-    await page.keyboard.down('Alt');
-    await expect.poll(() => voiceStatus(page)).toContain('Listening');
-    // Chromium's fake mic produces periodic tones. Keep a full interval.
-    await page.waitForTimeout(1150);
-    await page.keyboard.up('Meta');
-    await page.keyboard.up('Alt');
-    await expect.poll(() => voiceStatus(page)).toBe('Transcript: Switch accounts.');
+    async function speak() {
+      await page.keyboard.down('Meta');
+      await page.keyboard.down('Alt');
+      await expect.poll(() => voiceStatus(page)).toContain('Listening');
+      // Chromium's fake mic produces periodic tones. Keep a full interval.
+      await page.waitForTimeout(1150);
+      await page.keyboard.up('Meta');
+      await page.keyboard.up('Alt');
+    }
+    await speak();
+    await expect.poll(() => voiceStatus(page)).toContain('Enable Webpage guidance');
     expect(uploads).toHaveLength(1);
+    expect(questions).toHaveLength(0);
     expect(uploads[0]!.subarray(0, 4).toString()).toBe('RIFF');
     expect(uploads[0]!.readUInt16LE(22)).toBe(1);
     expect(uploads[0]!.readUInt32LE(24)).toBe(16_000);
     expect(uploads[0]!.readUInt16LE(34)).toBe(16);
     await expect(page.locator('#clickpilot-overlay')).toHaveCount(0);
+
+    await extension.worker.evaluate(async () => {
+      const api = (globalThis as unknown as { chrome: { storage: { local: { set: (value: unknown) => Promise<void> } } } }).chrome;
+      await api.storage.local.set({
+        'clickpilot.ai-sharing': { version: 1, onboardingComplete: true, guidance: true, selectedText: false },
+        'clickpilot.active-provider': 'groq',
+        'clickpilot.provider.groq': { version: 1, provider: 'groq', model: 'openai/gpt-oss-120b', apiKey: 'fixture-groq-key' },
+      });
+    });
+    await expect.poll(async () => {
+      const { node, cdp } = await buddyNode(page, 'aria-label', 'Open Settings');
+      await cdp.detach();
+      return node.attributes?.includes('hidden');
+    }).toBe(true);
+
+    deferTranscript = true;
+    await speak();
+    await expect.poll(() => voiceStatus(page)).toContain('Transcribing');
+    await expect.poll(() => !!finishTranscript).toBe(true);
+    const secondTab = await context.newPage();
+    await secondTab.bringToFront();
+    await expect.poll(() => voiceStatus(page)).toBe('');
+    finishTranscript?.();
+    deferTranscript = false;
+    await secondTab.close();
+    await page.bringToFront();
+    expect(questions).toHaveLength(0);
+
+    const { node, cdp } = await buddyNode(page, 'id', 'clickpilot-ask');
+    await cdp.send('DOM.focus', { nodeId: node.nodeId });
+    await cdp.detach();
+    await page.keyboard.type('Keep my typed draft');
+    await speak();
+    await expect.poll(() => buddyText(page, 'class', 'reply')).toBe('Tokyo is the capital of Japan.');
+    expect(questions).toEqual(['What is the capital of Japan?']);
+    const draft = await buddyNode(page, 'id', 'clickpilot-ask');
+    try {
+      const { object } = await draft.cdp.send('DOM.resolveNode', { nodeId: draft.node.nodeId });
+      const { result } = await draft.cdp.send('Runtime.callFunctionOn', {
+        objectId: object.objectId,
+        functionDeclaration: 'function () { return this.value; }',
+        returnByValue: true,
+      });
+      expect(result.value).toBe('Keep my typed draft');
+    } finally { await draft.cdp.detach(); }
+
+    transcript = 'Find the primary target';
+    await speak();
+    await expect(page.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Primary target.');
+    expect(questions).toEqual(['What is the capital of Japan?', 'Find the primary target']);
+    await expect(page.locator('#counter')).toHaveText('Clicks: 0');
+
+    const typed = await buddyNode(page, 'id', 'clickpilot-ask');
+    await typed.cdp.send('DOM.focus', { nodeId: typed.node.nodeId });
+    await typed.cdp.detach();
+    await page.keyboard.press('Enter');
+    await expect.poll(() => questions.at(-1)).toBe('Keep my typed draft');
+    await expect.poll(async () => {
+      const { node, cdp } = await buddyNode(page, 'aria-label', 'Send question');
+      await cdp.detach();
+      return node.attributes?.includes('disabled');
+    }).toBe(true);
   } finally {
+    finishTranscript?.();
     await context?.close();
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));

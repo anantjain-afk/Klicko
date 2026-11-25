@@ -525,3 +525,11 @@ The user approved this slice on 26 November 2026 and asked to keep the existing 
 Use a dedicated WXT preview build, the existing offscreen audio document, Chrome microphone permission, and a session opt-in that explains the upload. The Worker runs locally with a dedicated Workers AI binding to Whisper Large V3 Turbo. Audio is captured in memory, capped at 30 seconds, normalized to 16 kHz mono PCM WAV, and uploaded once on release. Use the existing optional HTTP host permission to grant access to the loopback Worker on demand.
 
 Automated and live verification are recorded in `PROGRESS.md`. Release-to-send requires separate approval.
+
+## Voice milestone 2 — Release-to-send on the local fixture
+
+**Status: VERIFIED by the user** on 26 November 2026. The user confirmed release-to-send works in Chrome.
+
+The user approved continuing on 26 November 2026. Releasing Option or Command after a hold sends a valid transcript as a question through the existing buddy submit path. Keep the localhost preview build, the existing provider settings, and the page-sharing consent. Ask the user to enable voice again so the setup explains that releasing sends the transcript as a question when Webpage guidance is enabled.
+
+The automated checks and the user's Chrome confirmation are recorded in `PROGRESS.md`.

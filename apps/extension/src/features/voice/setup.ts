@@ -6,7 +6,7 @@ export function showVoiceSetup() {
   const heading = document.createElement('h1');
   heading.textContent = 'Klicko voice preview';
   const description = document.createElement('p');
-  description.textContent = 'On the local test page, hold Option + Command to record. Release either key to send the clip through the local Worker to Cloudflare Workers AI and show the transcript in Klicko. Escape discards the recording.';
+  description.textContent = 'On the local test page, hold Option + Command to record. Releasing either key sends the clip to Cloudflare Workers AI for transcription. With Webpage guidance enabled, Klicko sends the transcript and permitted page context to your selected assistant provider. Press Escape before releasing to discard the recording.';
   const enable = document.createElement('button');
   enable.textContent = 'Allow microphone and enable voice';
   const disable = document.createElement('button');

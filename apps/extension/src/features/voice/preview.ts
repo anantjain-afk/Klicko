@@ -4,7 +4,7 @@ export const VOICE_PREVIEW = import.meta.env.MODE === 'voice-preview';
 export const VOICE_FIXTURE = 'http://localhost:4173/guidance.html';
 export const VOICE_WORKER_HOST = 'http://127.0.0.1/*';
 export const VOICE_WORKER_URL = 'http://127.0.0.1:8787/v1/voice/transcribe';
-export const VOICE_CONSENT = 'clickpilot.voice-preview';
+export const VOICE_CONSENT = 'clickpilot.voice-release-to-send';
 export const VOICE_PAGE_PORT = 'clickpilot-voice-preview';
 export const VOICE_AUDIO_PORT = 'clickpilot-voice-audio';
 export const VOICE_SETUP = 'clickpilot-voice-setup';
