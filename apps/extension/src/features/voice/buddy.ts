@@ -18,6 +18,7 @@ export function createVoiceControls(canRecord: () => boolean, reveal: () => void
   let hold: ReturnType<typeof setTimeout> | undefined;
   let port: Browser.runtime.Port | undefined;
   let phase: 'starting' | 'listening' | 'finishing' = 'starting';
+  let recordingUrl: string | undefined;
 
   function show(message: string) {
     status.textContent = message;
@@ -29,18 +30,23 @@ export function createVoiceControls(canRecord: () => boolean, reveal: () => void
     hold = undefined;
     const current = port;
     port = undefined;
+    recordingUrl = undefined;
     current?.disconnect();
   }
   function clear() {
     stop();
     show('');
   }
-  function start() {
+  function focusedPage(url: string | undefined) {
+    return canRecord() && location.href === url && !document.hidden && document.hasFocus();
+  }
+  function start(url: string) {
     hold = undefined;
-    if (!canRecord() || document.hidden || !document.hasFocus()) return;
+    if (!focusedPage(url)) return;
     try {
       const current = browser.runtime.connect({ name: VOICE_PAGE_PORT });
       port = current;
+      recordingUrl = url;
       phase = 'starting';
       show('Starting microphone…');
       current.onMessage.addListener((message: unknown) => {
@@ -51,7 +57,7 @@ export function createVoiceControls(canRecord: () => boolean, reveal: () => void
         } else if (message.type === 'transcribing') {
           show('Transcribing…');
         } else if (message.type === 'transcript') {
-          if (phase !== 'finishing' || !canRecord() || document.hidden || !document.hasFocus()) return clear();
+          if (phase !== 'finishing' || !focusedPage(recordingUrl)) return clear();
           stop();
           const text = message.text.trim();
           if (!text) return show(voiceMessages.empty);
@@ -86,7 +92,8 @@ export function createVoiceControls(canRecord: () => boolean, reveal: () => void
     }
     if ((event.key === 'Alt' || event.key === 'Meta') && event.altKey && event.metaKey
       && !event.shiftKey && !event.ctrlKey && !event.repeat && !port && hold === undefined && canRecord()) {
-      hold = setTimeout(start, 200);
+      const url = location.href;
+      hold = setTimeout(() => start(url), 200);
     }
   }
   function keyUp(event: KeyboardEvent) {
@@ -95,7 +102,7 @@ export function createVoiceControls(canRecord: () => boolean, reveal: () => void
     clearTimeout(hold);
     hold = undefined;
     if (!port) return;
-    if (phase === 'starting' || !canRecord() || document.hidden || !document.hasFocus()) return clear();
+    if (phase === 'starting' || !focusedPage(recordingUrl)) return clear();
     if (phase === 'finishing') return;
     phase = 'finishing';
     try { port.postMessage('finish'); } catch { clear(); }

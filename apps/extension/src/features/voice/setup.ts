@@ -6,7 +6,7 @@ export function showVoiceSetup() {
   const heading = document.createElement('h1');
   heading.textContent = 'Klicko voice preview';
   const description = document.createElement('p');
-  description.textContent = 'On the local test page, hold Option + Command to record. Releasing either key sends the clip to Cloudflare Workers AI for transcription. With Webpage guidance enabled, Klicko sends the transcript and permitted page context to your selected assistant provider. Press Escape before releasing to discard the recording.';
+  description.textContent = 'On supported sites where Klicko is enabled, hold Option + Command to record. Releasing either key sends the clip through the local Worker to Cloudflare Workers AI for transcription. With Webpage guidance enabled, Klicko sends the transcript and permitted page context to your selected assistant provider. Press Escape before releasing to discard the recording.';
   const enable = document.createElement('button');
   enable.textContent = 'Allow microphone and enable voice';
   const disable = document.createElement('button');
@@ -18,7 +18,7 @@ export function showVoiceSetup() {
   function display(enabled: boolean) {
     enable.disabled = enabled;
     disable.disabled = !enabled;
-    status.textContent = enabled ? 'Voice is enabled for this browser session. Return to the test tab.' : 'Voice is off.';
+    status.textContent = enabled ? 'Voice is enabled for this browser session. Return to the tab where you want to use it.' : 'Voice is off.';
   }
   enable.disabled = disable.disabled = true;
   void browser.storage.session.get(VOICE_CONSENT).then((value) => {

@@ -1371,3 +1371,30 @@ Spoken questions preserve unsent typed drafts. Escape, losing focus, switching t
 3. Hold Option + Command, wait for **Listening**, say “Find the primary target,” and release. Expect the transcript and a highlight without pressing Enter. The fixture should still say **Clicks: 0**.
 4. Ask “What buttons are visible on this page?” the same way. Expect a text reply. Then start another recording and press Escape before releasing. Expect no new transcript, reply, or highlight from the cancelled recording.
 5. Turn off **Webpage guidance** in Settings and repeat a spoken request. Expect the transcript and a message about enabling Webpage guidance. A new assistant reply or highlight in this state is a failure.
+
+## Voice milestone 3 — Supported websites — 26 November 2026
+
+**Status: VERIFIED by the user** on 26 November 2026. The user confirmed the supported-site voice preview works after receiving the YouTube verification steps.
+
+The dedicated voice preview now accepts the shortcut in the active top-level tab on supported sites where Klicko is enabled. Voice setup requests a fresh session opt-in for the broader site scope. The local transcription Worker, existing Chrome permissions, Webpage guidance consent, and selected assistant provider are reused.
+
+The background checks the original tab and document at recording start, release, and transcript delivery. It captures the live tab URL because Chrome can still report the document's initial URL after same-document navigation. Tab and navigation changes cancel pending work. The browser test confirms a fresh recording can start after a route change.
+
+| Exact command or check | Result |
+| --- | --- |
+| `corepack pnpm typecheck` | Exit 0 across the workspace. |
+| `corepack pnpm lint` | Exit 0. |
+| `corepack pnpm test` | Exit 0. 96 API and 137 extension unit tests passed. |
+| `corepack pnpm --filter @clickpilot/extension build:voice --level warn` | Exit 0 with the existing WXT chunk-size warning. |
+| `WRANGLER_LOG_PATH=/private/tmp/clickpilot-build-wrangler.log corepack pnpm build` | Exit 0. Regular extension and Worker dry-run passed. |
+| `CLICKPILOT_TEST_VOICE=1 corepack pnpm exec playwright test tests/e2e/voice.spec.ts tests/e2e/provider-settings.spec.ts tests/e2e/global-activation.spec.ts --workers=2` | Exit 0 outside the sandbox. Ten Chromium tests passed. The voice scenario used a fake microphone and stubbed transcription and provider replies. It covered two origins, Webpage guidance consent, Escape, tab switching, a late transcript during same-tab navigation, a fresh request on the destination URL, and a restricted login page. It also verified answers, guidance with zero automated clicks, and typed draft preservation. |
+| `git diff --check` and build inspection | Exit 0. Manifests match and the voice endpoint and opt-in marker are confined to the preview bundle. |
+
+### Manual Chrome verification
+
+1. Run `corepack pnpm --filter @clickpilot/extension build:voice`, reload the unpacked preview at `chrome://extensions`, and keep `corepack pnpm --filter @clickpilot/api dev:voice` running. Refresh YouTube after reloading the extension. Activate Klicko if the buddy is absent. Confirm your existing provider is configured and **Webpage guidance** is enabled.
+2. In the buddy, open **Voice setup**, enable voice for supported sites, then close the setup tab and return to YouTube. Hold Option + Command, wait for **Listening**, say “Show me where I can search YouTube,” and release. Expect a transcript and a reply or highlight through the existing assistant. If you are signed in, also try “Show me where to switch accounts.” The page should wait for your click.
+3. Start another recording and switch tabs before releasing. Return to YouTube. Expect the mic to stop, with no new reply or highlight from the cancelled recording. Navigate within YouTube, then try a fresh request. Expect guidance to reflect the current page.
+4. Turn Klicko off on the current tab or open a Chrome settings tab and hold the shortcut. Expect no listening indicator. A recording or a response tied to a previous page is a failure.
+
+The local Worker is still required for the verified preview.

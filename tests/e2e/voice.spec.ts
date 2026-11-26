@@ -37,12 +37,18 @@ async function buddyText(page: Page, key: string, value: string) {
 }
 const voiceStatus = (page: Page) => buddyText(page, 'id', 'clickpilot-voice-status');
 
-test('release sends a spoken question through the existing assistant with consent', async () => {
+test('voice follows activation and stays bound to the page that starts recording', async () => {
   const uploads: Buffer[] = [];
   const questions: string[] = [];
+  const origins: string[] = [];
   let transcript = 'What is the capital of Japan?';
   let deferTranscript = false;
   let finishTranscript: (() => void) | undefined;
+  function completeDeferredTranscript() {
+    const finish = finishTranscript;
+    finishTranscript = undefined;
+    finish?.();
+  }
   const server = createServer(async (request, response) => {
     if (request.url !== '/v1/voice/transcribe' || request.method !== 'POST'
       || request.headers['content-type'] !== 'audio/wav' || request.headers['x-klicko-voice'] !== 'preview') {
@@ -78,9 +84,13 @@ test('release sends a spoken question through the existing assistant with consen
       },
     });
     context = extension.context;
+    await context.route('http://127.0.0.1:4173/login', (route) => route.fulfill({
+      contentType: 'text/html', body: '<title>Restricted fixture</title><h1>Restricted fixture</h1>',
+    }));
     await context.route('https://api.groq.com/openai/v1/chat/completions', async (route) => {
       const input = JSON.parse(route.request().postDataJSON().messages[1].content);
       questions.push(input.userGoal);
+      origins.push(input.page.origin);
       const target = input.elements.find((item: { name: string }) => item.name === 'Primary target');
       const result = input.userGoal === 'Find the primary target'
         ? { kind: 'guidance', targetId: target.id, nextStep: 'none', instruction: 'Click Primary target.', message: 'Use the primary control.' }
@@ -134,14 +144,14 @@ test('release sends a spoken question through the existing assistant with consen
     await page.keyboard.up('Meta');
     expect(uploads).toHaveLength(0);
 
-    async function speak() {
-      await page.keyboard.down('Meta');
-      await page.keyboard.down('Alt');
-      await expect.poll(() => voiceStatus(page)).toContain('Listening');
+    async function speak(tab = page) {
+      await tab.keyboard.down('Meta');
+      await tab.keyboard.down('Alt');
+      await expect.poll(() => voiceStatus(tab)).toContain('Listening');
       // Chromium's fake mic produces periodic tones. Keep a full interval.
-      await page.waitForTimeout(1150);
-      await page.keyboard.up('Meta');
-      await page.keyboard.up('Alt');
+      await tab.waitForTimeout(1150);
+      await tab.keyboard.up('Meta');
+      await tab.keyboard.up('Alt');
     }
     await speak();
     await expect.poll(() => voiceStatus(page)).toContain('Enable Webpage guidance');
@@ -174,7 +184,7 @@ test('release sends a spoken question through the existing assistant with consen
     const secondTab = await context.newPage();
     await secondTab.bringToFront();
     await expect.poll(() => voiceStatus(page)).toBe('');
-    finishTranscript?.();
+    completeDeferredTranscript();
     deferTranscript = false;
     await secondTab.close();
     await page.bringToFront();
@@ -214,8 +224,43 @@ test('release sends a spoken question through the existing assistant with consen
       await cdp.detach();
       return node.attributes?.includes('disabled');
     }).toBe(true);
+
+    const crossOrigin = await context.newPage();
+    await crossOrigin.goto('http://127.0.0.1:4173/guidance.html?voice=second-origin');
+    await crossOrigin.bringToFront();
+    await expect(crossOrigin.locator('#clickpilot-buddy')).toHaveCount(1);
+    await expect.poll(async () => {
+      const { node, cdp } = await buddyNode(crossOrigin, 'aria-label', 'Open sidebar');
+      await cdp.detach();
+      return node.attributes?.includes('disabled');
+    }).toBe(false);
+
+    deferTranscript = true;
+    await speak(crossOrigin);
+    await expect.poll(() => !!finishTranscript).toBe(true);
+    await crossOrigin.evaluate(() => history.pushState({}, '', '#destination'));
+    await expect.poll(() => voiceStatus(crossOrigin)).toBe('');
+    completeDeferredTranscript();
+    deferTranscript = false;
+    expect(questions).toHaveLength(3);
+    await speak(crossOrigin);
+    await expect(crossOrigin.locator('#clickpilot-overlay .tooltip')).toHaveText('Click Primary target.');
+    expect(questions).toHaveLength(4);
+    expect(origins.at(-1)).toBe('http://127.0.0.1:4173');
+    await expect(crossOrigin.locator('#counter')).toHaveText('Clicks: 0');
+
+    const completedUploads = uploads.length;
+    await crossOrigin.goto('http://127.0.0.1:4173/login');
+    await expect(crossOrigin.getByText('Restricted fixture')).toBeVisible();
+    await crossOrigin.keyboard.down('Alt');
+    await crossOrigin.keyboard.down('Meta');
+    await crossOrigin.waitForTimeout(350);
+    await crossOrigin.keyboard.up('Alt');
+    await crossOrigin.keyboard.up('Meta');
+    await expect(crossOrigin.locator('#clickpilot-buddy')).toHaveCount(0);
+    expect(uploads).toHaveLength(completedUploads);
   } finally {
-    finishTranscript?.();
+    completeDeferredTranscript();
     await context?.close();
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));

@@ -1,17 +1,16 @@
 import { VOICE_MAX_TEXT } from '@clickpilot/shared/voice';
 
 export const VOICE_PREVIEW = import.meta.env.MODE === 'voice-preview';
-export const VOICE_FIXTURE = 'http://localhost:4173/guidance.html';
 export const VOICE_WORKER_HOST = 'http://127.0.0.1/*';
 export const VOICE_WORKER_URL = 'http://127.0.0.1:8787/v1/voice/transcribe';
-export const VOICE_CONSENT = 'clickpilot.voice-release-to-send';
+export const VOICE_CONSENT = 'clickpilot.voice-on-supported-sites';
 export const VOICE_PAGE_PORT = 'clickpilot-voice-preview';
 export const VOICE_AUDIO_PORT = 'clickpilot-voice-audio';
 export const VOICE_SETUP = 'clickpilot-voice-setup';
 
 export const voiceMessages = {
   setup: 'Open Voice setup to enable microphone access and Cloudflare transcription.',
-  unavailable: 'Voice preview is unavailable. Check that the test tab is active and Klicko is on.',
+  unavailable: 'Voice preview is unavailable. Focus a supported tab where Klicko is on.',
   permission: 'Microphone access failed. Check Chrome permissions in Voice setup.',
   busy: 'Another voice recording is already in progress.',
   expired: 'Recording reached the 30-second limit. Hold the keys again to retry.',

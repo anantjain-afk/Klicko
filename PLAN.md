@@ -533,3 +533,11 @@ Automated and live verification are recorded in `PROGRESS.md`. Release-to-send r
 The user approved continuing on 26 November 2026. Releasing Option or Command after a hold sends a valid transcript as a question through the existing buddy submit path. Keep the localhost preview build, the existing provider settings, and the page-sharing consent. Ask the user to enable voice again so the setup explains that releasing sends the transcript as a question when Webpage guidance is enabled.
 
 The automated checks and the user's Chrome confirmation are recorded in `PROGRESS.md`.
+
+## Voice milestone 3 — Supported websites
+
+**Status: VERIFIED by the user** on 26 November 2026. The user confirmed the supported-site voice preview works.
+
+The user approved extending the shortcut to supported websites on 26 November 2026. Keep the dedicated Chrome preview build and the local Whisper Worker. Apply the existing site restrictions and require an active tab with Klicko enabled. Request a fresh voice opt-in for the expanded site scope, and tie each recording to its original tab, URL and document.
+
+The automated checks and the user's live Chrome confirmation are recorded in `PROGRESS.md`.

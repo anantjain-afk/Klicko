@@ -7,7 +7,8 @@ import { mountRobot } from './mount-robot';
 import { animate } from 'motion';
 import { playSound } from '../../lib/sounds';
 import { createVoiceControls } from '../voice/buddy';
-import { VOICE_FIXTURE, VOICE_PREVIEW } from '../voice/preview';
+import { VOICE_PREVIEW } from '../voice/preview';
+import { supportedPage } from '../../lib/activation';
 
 const QUESTION_LIMIT = 240;
 import companionCss from './companion.css?inline';
@@ -99,8 +100,8 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
   const settings = button('Open Settings', () => openPanel(true), 'settings');
   const footer = document.createElement('div'); footer.className = 'actions'; footer.append(hide);
   popup.append(heading, greeting, reply, replyLink, status, form, actions, note, settings, footer);
-  const voice = VOICE_PREVIEW && location.href === VOICE_FIXTURE
-    ? createVoiceControls(() => visible && connected && !disposed && valid() && location.href === VOICE_FIXTURE, () => {
+  const voice = VOICE_PREVIEW
+    ? createVoiceControls(() => visible && connected && !disposed && valid() && supportedPage(location.href), () => {
       if (!visible || disposed) return;
       expanded = true;
       render();
@@ -198,6 +199,7 @@ export function createBuddy(pageKey: () => string, valid: () => boolean, targetR
   }
   function render() {
     launcher.hidden = !visible;
+    if (voice) voice.element.hidden = !supportedPage(location.href);
     showPopup(visible && expanded);
     launcher.setAttribute('aria-expanded', String(expanded));
     const text = view?.source === 'text'; const state = view?.state;
