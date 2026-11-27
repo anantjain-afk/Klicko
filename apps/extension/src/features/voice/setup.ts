@@ -1,12 +1,13 @@
 import { browser } from 'wxt/browser';
-import { VOICE_CONSENT, VOICE_WORKER_HOST } from './preview';
+import { VOICE_CONSENT, VOICE_HOSTED, VOICE_WORKER_HOST } from './preview';
 
 export function showVoiceSetup() {
   document.title = 'Klicko voice setup';
   const heading = document.createElement('h1');
   heading.textContent = 'Klicko voice preview';
   const description = document.createElement('p');
-  description.textContent = 'On supported sites where Klicko is enabled, hold Option + Command to record. Releasing either key sends the clip through the local Worker to Cloudflare Workers AI for transcription. With Webpage guidance enabled, Klicko sends the transcript and permitted page context to your selected assistant provider. Press Escape before releasing to discard the recording.';
+  const worker = VOICE_HOSTED ? 'the hosted Klicko Worker' : 'the local Worker';
+  description.textContent = `On supported sites where Klicko is enabled, hold Option + Command to record. Releasing either key sends the clip through ${worker} to Cloudflare Workers AI for transcription. With Webpage guidance enabled, Klicko sends the transcript and permitted page context to your selected assistant provider. Press Escape before releasing to discard the recording.`;
   const enable = document.createElement('button');
   enable.textContent = 'Allow microphone and enable voice';
   const disable = document.createElement('button');
@@ -29,7 +30,7 @@ export function showVoiceSetup() {
     enable.disabled = true;
     try {
       if (!await browser.permissions.request({ origins: [VOICE_WORKER_HOST] })) {
-        status.textContent = 'Allow access to the local Worker to enable voice.';
+        status.textContent = `Allow access to ${worker} to enable voice.`;
         return;
       }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });

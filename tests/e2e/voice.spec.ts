@@ -4,7 +4,8 @@ import { join } from 'node:path';
 import { test, expect, type Page } from '@playwright/test';
 import { activateToolbar, launchExtension } from './extension';
 
-test.skip(process.env.CLICKPILOT_TEST_VOICE !== '1', 'Requires the local voice-preview build.');
+const hosted = process.env.CLICKPILOT_TEST_VOICE === 'hosted';
+test.skip(process.env.CLICKPILOT_TEST_VOICE !== '1' && !hosted, 'Requires a voice build.');
 
 // Playwright selectors cannot pierce the buddy's closed shadow root.
 async function buddyNode(page: Page, key: string, value: string) {
@@ -42,6 +43,7 @@ test('voice follows activation and stays bound to the page that starts recording
   const questions: string[] = [];
   const origins: string[] = [];
   let transcript = 'What is the capital of Japan?';
+  let transcriptionStatus = 200;
   let deferTranscript = false;
   let finishTranscript: (() => void) | undefined;
   function completeDeferredTranscript() {
@@ -58,7 +60,7 @@ test('voice follows activation and stays bound to the page that starts recording
     for await (const chunk of request) chunks.push(chunk);
     uploads.push(Buffer.concat(chunks));
     if (deferTranscript) await new Promise<void>((resolve) => { finishTranscript = resolve; });
-    response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ text: transcript }));
+    response.writeHead(transcriptionStatus, { 'Content-Type': 'application/json' }).end(JSON.stringify({ text: transcript }));
   });
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
@@ -69,7 +71,7 @@ test('voice follows activation and stays bound to the page that starts recording
   let context: Awaited<ReturnType<typeof launchExtension>>['context'] | undefined;
   try {
     const extension = await launchExtension(false, true, {
-      path: 'apps/extension/.output/chrome-mv3-voice-preview',
+      path: `apps/extension/.output/chrome-mv3-voice-${hosted ? 'hosted' : 'preview'}`,
       args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'],
       async prepareCopy(path) {
         // Leave the developer's live Worker and the original unpacked build alone.
@@ -78,9 +80,10 @@ test('voice follows activation and stays bound to the page that starts recording
         if (!audio) throw new Error('Voice-preview audio bundle is missing.');
         const file = join(chunks, audio);
         const code = await readFile(file, 'utf8');
-        const endpoint = '127.0.0.1:8787/v1/voice/transcribe';
-        if (!code.includes(endpoint)) throw new Error('Voice-preview endpoint is missing.');
-        await writeFile(file, code.replace(endpoint, `127.0.0.1:${address.port}/v1/voice/transcribe`));
+        const origin = hosted ? 'https://voice.example.test' : 'http://127.0.0.1:8787';
+        const endpoint = origin + '/v1/voice/transcribe';
+        if (!code.includes(endpoint)) throw new Error('Voice endpoint is missing.');
+        await writeFile(file, code.replace(endpoint, `http://127.0.0.1:${address.port}/v1/voice/transcribe`));
       },
     });
     context = extension.context;
@@ -248,6 +251,16 @@ test('voice follows activation and stays bound to the page that starts recording
     expect(questions).toHaveLength(4);
     expect(origins.at(-1)).toBe('http://127.0.0.1:4173');
     await expect(crossOrigin.locator('#counter')).toHaveText('Clicks: 0');
+
+    if (hosted) {
+      transcriptionStatus = 429;
+      await speak(crossOrigin);
+      await expect.poll(() => voiceStatus(crossOrigin)).toContain('too many requests');
+      transcriptionStatus = 503;
+      await speak(crossOrigin);
+      await expect.poll(() => voiceStatus(crossOrigin)).toContain('temporarily unavailable');
+      expect(questions).toHaveLength(4);
+    }
 
     const completedUploads = uploads.length;
     await crossOrigin.goto('http://127.0.0.1:4173/login');

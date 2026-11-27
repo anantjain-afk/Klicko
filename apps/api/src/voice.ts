@@ -9,7 +9,7 @@ export interface VoiceEnv {
   AI?: { run: (model: typeof VOICE_MODEL, input: { audio: string; task: 'transcribe'; vad_filter: true }) => Promise<unknown> };
 }
 
-function error(code: string, status: number) {
+export function voiceError(code: string, status: number) {
   return Response.json({ error: code }, { status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
 }
 
@@ -56,25 +56,33 @@ function base64(clip: Uint8Array) {
   return btoa(binary);
 }
 
-export async function transcribeVoice(request: Request, env: VoiceEnv) {
-  if (env.VOICE_PREVIEW !== 'enabled') return error('voice_preview_disabled', 404);
+export function transcribeVoice(request: Request, env: VoiceEnv) {
+  if (env.VOICE_PREVIEW !== 'enabled') return voiceError('voice_preview_disabled', 404);
+  return transcribeVoiceClip(request, env.AI);
+}
+
+export async function transcribeVoiceClip(request: Request, ai: VoiceEnv['AI'], checkRate?: () => Promise<Response | undefined>) {
   // A cross-origin web form cannot set this header, and the Worker grants no CORS.
-  if (request.headers.get('X-Klicko-Voice') !== 'preview') return error('invalid_voice_request', 403);
+  if (request.headers.get('X-Klicko-Voice') !== 'preview') return voiceError('invalid_voice_request', 403);
   const type = request.headers.get('Content-Type')?.trim().toLowerCase();
   const encoding = request.headers.get('Content-Encoding')?.toLowerCase();
-  if (type !== 'audio/wav' || (encoding && encoding !== 'identity')) return error('unsupported_audio', 415);
-  if (Number(request.headers.get('Content-Length')) > VOICE_MAX_BYTES) return error('audio_too_large', 413);
+  if (type !== 'audio/wav' || (encoding && encoding !== 'identity')) return voiceError('unsupported_audio', 415);
+  if (Number(request.headers.get('Content-Length')) > VOICE_MAX_BYTES) return voiceError('audio_too_large', 413);
+  if (checkRate) {
+    const blocked = await checkRate();
+    if (blocked) return blocked;
+  }
   const clip = await readClip(request).catch(() => undefined);
-  if (clip === null) return error('audio_too_large', 413);
-  if (!clip || !isVoiceWav(clip)) return error('invalid_wav', 400);
-  if (!env.AI) return error('voice_provider_unavailable', 503);
-  if (request.signal.aborted) return error('cancelled', 499);
+  if (clip === null) return voiceError('audio_too_large', 413);
+  if (!clip || !isVoiceWav(clip)) return voiceError('invalid_wav', 400);
+  if (!ai) return voiceError('voice_provider_unavailable', 503);
+  if (request.signal.aborted) return voiceError('cancelled', 499);
   try {
-    const result = await env.AI.run(VOICE_MODEL, { audio: base64(clip), task: 'transcribe', vad_filter: true });
-    if (request.signal.aborted) return error('cancelled', 499);
+    const result = await ai.run(VOICE_MODEL, { audio: base64(clip), task: 'transcribe', vad_filter: true });
+    if (request.signal.aborted) return voiceError('cancelled', 499);
     const text = readTranscript(result);
-    return text === null ? error('invalid_transcript', 502) : Response.json({ text }, {
+    return text === null ? voiceError('invalid_transcript', 502) : Response.json({ text }, {
       headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' },
     });
-  } catch { return error('voice_provider_error', 502); }
+  } catch { return voiceError('voice_provider_error', 502); }
 }

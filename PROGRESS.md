@@ -1398,3 +1398,56 @@ The background checks the original tab and document at recording start, release,
 4. Turn Klicko off on the current tab or open a Chrome settings tab and hold the shortcut. Expect no listening indicator. A recording or a response tied to a previous page is a failure.
 
 The local Worker is still required for the verified preview.
+
+## Voice milestone 4 — Hosted transcription preparation — 28 November 2026
+
+**Status: AWAITING USER VERIFICATION.** The Worker configuration and hosted Chrome build were prepared and tested locally.
+
+- The hosted Worker exposes one HTTPS route for a configured origin and shares the local WAV validator and Whisper inference code. The configuration starts disabled with an empty origin, public routing off, and observability disabled. `VOICE_HOSTED_ENABLED` is the off switch. The route fails closed when its rate limiter is unavailable.
+- Cloudflare's rate limit binding applies a threshold of six requests per minute per client IP at each Cloudflare location. This is an approximate throttle. The Workers Free account's daily inference allocation supplies the account-wide cutoff. It is shared with other Workers AI workloads on that account. The chosen Cloudflare account's plan must be confirmed before enabling the endpoint. [Workers rate limiting](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/) · [Workers AI pricing](https://developers.cloudflare.com/workers-ai/platform/pricing/)
+- The hosted extension build accepts one HTTPS origin at build time. Voice setup requests optional access to that host and stores separate session consent for it. The local voice build remains available. The hosted UI explains temporary service pauses and rate limits. The existing assistant flow still uses the user's selected provider and existing key.
+
+| Exact command or check | Result |
+| --- | --- |
+| `corepack pnpm typecheck` | Exit 0. |
+| `corepack pnpm lint` | Exit 0. |
+| `corepack pnpm test` | Exit 0. 100 API and 137 extension tests passed. Hosted coverage includes one allowed route, off switch, missing or failing throttling, rejected upload shape and size, and a successful inference stub. |
+| `WRANGLER_LOG_PATH=/private/tmp/clickpilot-hosted-wrangler.log corepack pnpm --filter @clickpilot/api build:voice-hosted` | Exit 0. Wrangler bundled the Worker in dry-run mode with the AI and rate limit bindings and the default disabled settings. |
+| `WRANGLER_LOG_PATH=/private/tmp/clickpilot-hosted-standard-wrangler.log corepack pnpm build` | Exit 0. Regular Chrome build and local API Worker dry-run passed. |
+| `corepack pnpm --filter @clickpilot/extension build:voice --level warn` | Exit 0. Local voice preview built with the existing chunk-size warning. |
+| `WXT_VOICE_ORIGIN=https://voice.example.test corepack pnpm --filter @clickpilot/extension build:voice-hosted --level warn` | Exit 0. Hosted test build succeeded with the existing chunk-size warning. |
+| `WXT_VOICE_ORIGIN=http://voice.example.test corepack pnpm --filter @clickpilot/extension build:voice-hosted --level warn` | Exit 1 as expected. The build rejected an HTTP origin. |
+| `CLICKPILOT_TEST_VOICE=hosted corepack pnpm exec playwright test tests/e2e/voice.spec.ts tests/e2e/provider-settings.spec.ts tests/e2e/global-activation.spec.ts --workers=2` | Exit 0 outside the sandbox. All ten Chromium checks passed. The hosted Chrome copy used a fake microphone and transcription stub, including 429 and 503 responses. |
+| `CLICKPILOT_TEST_VOICE=1 corepack pnpm exec playwright test tests/e2e/voice.spec.ts` | Exit 0 outside the sandbox. The existing local voice scenario passed. |
+| `git diff --check` and bundle inspection | Exit 0. All three manifests match. The hosted HTTPS URL appears only in the hosted build and the loopback transcription endpoint appears only in the local preview. |
+
+### Manual Chrome verification before deployment
+
+1. Run `WXT_VOICE_ORIGIN=https://voice.example.test corepack pnpm --filter @clickpilot/extension build:voice-hosted`. Load `apps/extension/.output/chrome-mv3-voice-hosted` unpacked at `chrome://extensions`, with the other Klicko installs temporarily disabled.
+2. On a supported tab, activate Klicko and open **Voice setup**. Expect the setup to say that a hosted Klicko Worker receives the clip and Cloudflare Workers AI transcribes it. If Chrome asks for access, expect `voice.example.test`. This hostname is a test value for inspecting setup.
+3. Run the hosted Playwright command above to exercise speech and observe the rate-limit and service-pause outcomes. It uses a local stub. For live verification, load a build configured with the real HTTPS origin after deployment approval.
+
+### Deployment gate
+
+Confirm the target account is on Workers Free and choose one HTTPS hostname. Set that same origin in `VOICE_HOSTED_ORIGIN` for the Worker and `WXT_VOICE_ORIGIN` for the Chrome build. Enable a route and set `VOICE_HOSTED_ENABLED` to `enabled` only after deployment approval. A live check must cover one real transcript, the Cloudflare throttle, and the off switch across the deployed route. Account plan, external routing, actual quota and deployed behavior remain unverified.
+
+## Voice milestone 5 — Live Cloudflare deployment — 28 November 2026
+
+**Status: AWAITING USER VERIFICATION.** The user confirmed Workers Free and approved deploying to the existing `jainanant0905.workers.dev` subdomain. The Worker is live at `https://klicko-voice.jainanant0905.workers.dev` with transcription enabled.
+
+- `corepack pnpm --filter @clickpilot/api exec wrangler deployments list --config wrangler.voice-hosted.jsonc --json` returned Cloudflare code 10007, confirming there is no existing `klicko-voice` Worker on this account.
+- `corepack pnpm typecheck`, `corepack pnpm lint`, and `corepack pnpm test` passed with 237 unit tests before deploying the tested Worker code.
+- `WXT_VOICE_ORIGIN=https://klicko-voice.jainanant0905.workers.dev corepack pnpm --filter @clickpilot/extension build:voice-hosted --level warn` passed. The unpacked output is `apps/extension/.output/chrome-mv3-voice-hosted`. Bundle inspection confirmed the real transcription URL.
+- `WRANGLER_LOG_PATH=/private/tmp/klicko-voice-paused-deploy.log corepack pnpm --filter @clickpilot/api exec wrangler deploy --config /private/tmp/klicko-voice-live-wrangler.json --message 'Deploy hosted voice with transcription paused'` succeeded. Paused version `33209336-9765-4ce2-94b8-95f895dd3999` returned HTTP 503 and `voice_unavailable`.
+- `WRANGLER_LOG_PATH=/private/tmp/klicko-voice-enabled-deploy.log corepack pnpm --filter @clickpilot/api exec wrangler deploy --config /private/tmp/klicko-voice-live-wrangler.json --var VOICE_HOSTED_ENABLED:enabled --message 'Enable hosted voice transcription'` succeeded. Enabled version `41d6a98a-f434-4f9e-9140-ffef65cbd2ca` is live. The temporary Wrangler configuration uses the existing account, actual HTTPS origin, and public Workers route. The checked-in template defaults to off.
+- In both states, the live probe used `curl --silent --show-error --max-time 30 --write-out '\nHTTP %{http_code}\n' --request POST --header 'Content-Type: audio/wav' --header 'X-Klicko-Voice: preview' --data-binary @/private/tmp/klicko-deploy-voice.wav https://klicko-voice.jainanant0905.workers.dev/v1/voice/transcribe` (20-second timeout for the paused probe). The enabled version returned HTTP 200 and the synthetic transcript “Clicko can transcribe this voice test.”
+- A live Node fetch check received HTTP 404 for `GET /v1/guidance/next`. Eight small sequential `POST /v1/voice/transcribe` probes with `Content-Type: audio/wav`, `X-Klicko-Voice: preview`, and body `invalid-wav` returned 400 for probes 1–7 and HTTP 429 with `Retry-After: 60` for probe 8. A later curl probe returned 400 again. These probes stopped before inference. The Cloudflare threshold is approximate. The account-wide daily inference ceiling was verified against the user's plan confirmation and Cloudflare documentation without exhausting the account allocation.
+
+### Manual Chrome verification
+
+1. At `chrome://extensions`, reload the unpacked install from `apps/extension/.output/chrome-mv3-voice-hosted`. If needed, use **Load unpacked** and select that folder. Temporarily disable other Klicko installs and close the local voice Worker terminal if it is running.
+2. Refresh YouTube and activate Klicko. Open **Voice setup** and enable voice for this host. If Chrome prompts for site access, expect `klicko-voice.jainanant0905.workers.dev`. In Settings, confirm the usual assistant provider and **Webpage guidance** are enabled. Return focus to YouTube.
+3. Hold Option + Command until **Listening**, say “Show me where I can search YouTube,” and release. Expect **Transcribing**, the transcript, and a reply or highlight. An endpoint error or a webpage click triggered by Klicko is a failure. If a provider key is needed, enter it in Klicko Settings.
+4. Start another recording, press Escape or switch tabs before release, and verify that the microphone stops and no new reply appears.
+
+Await the user's live Chrome verification of the deployed hosted build.

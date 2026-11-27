@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "wrangler deploy --env \"\" --dry-run --outdir dist",
+    "build:voice-hosted": "wrangler deploy --config wrangler.voice-hosted.jsonc --dry-run --outdir dist/voice-hosted",
     "dev": "wrangler dev --local --ip 127.0.0.1 --port 8787 --log-level warn",
     "dev:voice": "wrangler dev --env voice --ip 127.0.0.1 --port 8787 --log-level warn",
     "test": "vitest run",

@@ -541,3 +541,17 @@ The automated checks and the user's Chrome confirmation are recorded in `PROGRES
 The user approved extending the shortcut to supported websites on 26 November 2026. Keep the dedicated Chrome preview build and the local Whisper Worker. Apply the existing site restrictions and require an active tab with Klicko enabled. Request a fresh voice opt-in for the expanded site scope, and tie each recording to its original tab, URL and document.
 
 The automated checks and the user's live Chrome confirmation are recorded in `PROGRESS.md`.
+
+## Voice milestone 4 — Prepare hosted transcription
+
+The user approved preparation on 28 November 2026. Add a standalone Cloudflare Worker that serves only transcription and a separate Chrome build tied to one HTTPS hostname. Reuse the local WAV limits, Whisper binding, opt-in, and existing assistant flow. The hosted Worker starts disabled and uses Cloudflare's per-IP rate limiting. Use the Workers Free account-wide daily inference allocation as the usage ceiling for the first hosted trial. Confirm the target account is on Workers Free before enabling the endpoint. [Workers AI pricing](https://developers.cloudflare.com/workers-ai/platform/pricing/) · [Workers rate limits](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/)
+
+Run unit tests for the hosted route and browser tests with a local stub. Dry-run the Worker build and verify that only the hosted extension build uses the configured HTTPS origin. Record evidence in `PROGRESS.md` and stop at **AWAITING USER VERIFICATION**. Enabling a public route and deployment require separate approval.
+
+## Voice milestone 5 — Live Cloudflare deployment
+
+On 28 November 2026 the user confirmed Workers Free, chose `my-klicko`, and explicitly approved deployment. Use the existing `klicko-voice` Worker and the chosen account subdomain. Keep the checked-in configuration disabled. Use a deployment configuration for the real origin and confirm the paused endpoint responds before enabling transcription.
+
+Acceptance covers a real Whisper transcript from a synthetic speech clip, the live throttle, the Chrome build for the real host, and numbered manual extension steps. Keep the existing assistant provider settings and website ZIP outside this deployment. Record results in `PROGRESS.md` and stop for manual Chrome verification.
+
+The user approved using the existing account subdomain. The Worker is live at `https://klicko-voice.jainanant0905.workers.dev`, and the unpacked hosted build uses that origin. Automated live checks passed. Status is **AWAITING USER VERIFICATION** in Chrome.

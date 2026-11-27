@@ -1,7 +1,7 @@
 import { browser } from 'wxt/browser';
 import { readBoundedJson } from '@clickpilot/shared/http';
 import { readTranscript, VOICE_MAX_SECONDS } from '@clickpilot/shared/voice';
-import { VOICE_AUDIO_PORT, VOICE_WORKER_URL, type VoiceMessage } from './preview';
+import { VOICE_AUDIO_PORT, VOICE_HOSTED, VOICE_WORKER_URL, type VoiceMessage } from './preview';
 import { toVoiceWav } from './wav';
 
 export function receiveVoiceRecording() {
@@ -53,6 +53,8 @@ export function receiveVoiceRecording() {
         });
         if (!response.ok) {
           await response.body?.cancel();
+          if (VOICE_HOSTED && response.status === 429) return end({ type: 'error', reason: 'rateLimited' });
+          if (VOICE_HOSTED && response.status === 503) return end({ type: 'error', reason: 'serviceUnavailable' });
           throw new Error('Transcription failed.');
         }
         const text = readTranscript(await readBoundedJson(response, 16 * 1024));
